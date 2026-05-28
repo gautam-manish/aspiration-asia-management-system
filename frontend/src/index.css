@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-body text-slate-800 bg-slate-50;
+  }
+  h1, h2, h3 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  /* ── Buttons ─────────────────────────────────── */
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-body text-sm font-medium transition-all duration-150 cursor-pointer;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 active:scale-95 shadow-sm;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 active:scale-95 shadow-sm;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 active:scale-95 shadow-sm;
+  }
+  .btn-ghost {
+    @apply btn text-slate-600 hover:bg-slate-100 active:scale-95;
+  }
+
+  /* ── Inputs ──────────────────────────────────── */
+  .input {
+    @apply w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white placeholder:text-slate-400
+           focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all;
+  }
+  .label {
+    @apply block text-xs font-medium text-slate-600 mb-1;
+  }
+
+  /* ── Cards ───────────────────────────────────── */
+  .card {
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm;
+  }
+  .card-header {
+    @apply px-6 py-4 border-b border-slate-100 flex items-center justify-between;
+  }
+  .card-body {
+    @apply px-6 py-4;
+  }
+
+  /* ── Table ───────────────────────────────────── */
+  .table-wrapper {
+    @apply overflow-x-auto rounded-xl border border-slate-200;
+  }
+  .table {
+    @apply w-full text-sm text-left;
+  }
+  .table th {
+    @apply px-4 py-3 bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-200;
+  }
+  .table td {
+    @apply px-4 py-3 text-slate-700 border-b border-slate-100 last-of-type:border-0;
+  }
+  .table tr:last-child td {
+    @apply border-0;
+  }
+  .table tbody tr {
+    @apply hover:bg-slate-50 transition-colors;
+  }
+
+  /* ── Badge ───────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-green  { @apply badge bg-green-100 text-green-700; }
+  .badge-red    { @apply badge bg-red-100 text-red-700; }
+  .badge-blue   { @apply badge bg-blue-100 text-blue-700; }
+  .badge-yellow { @apply badge bg-yellow-100 text-yellow-700; }
+  .badge-gray   { @apply badge bg-slate-100 text-slate-600; }
+
+  /* ── Page ────────────────────────────────────── */
+  .page-header {
+    @apply flex items-center justify-between mb-6;
+  }
+  .page-title {
+    @apply text-2xl font-display font-semibold text-slate-800;
+  }
+  .page-subtitle {
+    @apply text-sm text-slate-500 mt-0.5;
+  }
+
+  /* ── Modal ───────────────────────────────────── */
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4;
+  }
+  .modal {
+    @apply bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto;
+  }
+  .modal-header {
+    @apply flex items-center justify-between px-6 py-4 border-b border-slate-100;
+  }
+  .modal-body {
+    @apply px-6 py-5;
+  }
+  .modal-footer {
+    @apply flex justify-end gap-3 px-6 py-4 border-t border-slate-100;
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white !important; }
+}

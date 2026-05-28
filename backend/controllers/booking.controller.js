@@ -205,6 +205,26 @@ export const getBookingById = async (req, res) => {
 };
 
 // ─────────────────────────────────────────
+// @desc    Get Single Booking by queryId (e.g. ASA2026100)
+// @route   GET /api/bookings/by-query-id/:queryId
+// ─────────────────────────────────────────
+export const getBookingByQueryId = async (req, res) => {
+  try {
+    const queryId = (req.params.queryId || "").trim();
+    if (!queryId) {
+      return res.status(400).json({ success: false, message: "Booking ID is required", data: null });
+    }
+    const booking = await Booking.findOne({ queryId: { $regex: `^${queryId}$`, $options: "i" } });
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found", data: null });
+    }
+    res.status(200).json({ success: true, message: "Booking fetched successfully", data: booking });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message, data: null });
+  }
+};
+
+// ─────────────────────────────────────────
 // @desc    Update Booking by ID (full update from edit modal)
 // @route   PUT /api/bookings/:id
 // ─────────────────────────────────────────

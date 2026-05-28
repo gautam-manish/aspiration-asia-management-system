@@ -12,8 +12,8 @@ function HotelModal({ hotel, onClose, onSaved }) {
   const isEdit = !!hotel;
   const [form, setForm] = useState(
     isEdit
-      ? { name: hotel.name, country: hotel.country, city: hotel.city, googleMapUrl: hotel.googleMapUrl || "", costPerRoom: hotel.costPerRoom }
-      : { name: "", country: "", city: "", googleMapUrl: "", costPerRoom: [{ ...EMPTY_COST }] }
+      ? { name: hotel.name, country: hotel.country, city: hotel.city, contactNumbers: hotel.contactNumbers?.length ? hotel.contactNumbers : [""], googleMapUrl: hotel.googleMapUrl || "", costPerRoom: hotel.costPerRoom }
+      : { name: "", country: "", city: "", contactNumbers: [""], googleMapUrl: "", costPerRoom: [{ ...EMPTY_COST }] }
   );
   const [loading, setLoading] = useState(false);
 
@@ -25,6 +25,11 @@ function HotelModal({ hotel, onClose, onSaved }) {
   });
   const addCost    = () => setForm((f) => ({ ...f, costPerRoom: [...f.costPerRoom, { ...EMPTY_COST }] }));
   const removeCost = (i) => setForm((f) => ({ ...f, costPerRoom: f.costPerRoom.filter((_, idx) => idx !== i) }));
+
+  // ── Contact Numbers helpers ──
+  const setContact    = (i, v) => setForm((f) => { const c = [...f.contactNumbers]; c[i] = v; return { ...f, contactNumbers: c }; });
+  const addContact    = () => setForm((f) => ({ ...f, contactNumbers: [...f.contactNumbers, ""] }));
+  const removeContact = (i) => setForm((f) => ({ ...f, contactNumbers: f.contactNumbers.filter((_, idx) => idx !== i) }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,6 +65,33 @@ function HotelModal({ hotel, onClose, onSaved }) {
               <Field label="City" required>
                 <input className="input" value={form.city} onChange={(e) => setField("city", e.target.value)} required placeholder="Kathmandu" />
               </Field>
+            </div>
+
+            {/* Contact Numbers */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="label mb-0">Contact Numbers</label>
+                <button type="button" onClick={addContact} className="btn-secondary text-xs py-1">
+                  <i className="fa fa-plus" /> Add Number
+                </button>
+              </div>
+              <div className="space-y-2">
+                {form.contactNumbers.map((num, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      className="input flex-1"
+                      value={num}
+                      onChange={(e) => setContact(i, e.target.value)}
+                      placeholder="e.g. +977-1-4248999"
+                    />
+                    {form.contactNumbers.length > 1 && (
+                      <button type="button" onClick={() => removeContact(i)} className="btn-ghost text-red-400 hover:text-red-600 p-1">
+                        <i className="fa fa-trash-alt" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
             <Field label="Google Map URL">
@@ -145,7 +177,9 @@ export default function HotelsPage() {
     try {
       setLoading(true);
       const { data } = await hotelAPI.getAll(search);
-      setHotels(data.data || []);
+      const list = data.data || [];
+      list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+      setHotels(list);
     } catch (err) {
       toast.error(getError(err));
     } finally {
@@ -196,11 +230,7 @@ export default function HotelsPage() {
                 <tr>
                   <th>Hotel Name</th>
                   <th>Location</th>
-                  <th>Meal Plan</th>
-                  <th>Room Category</th>
-                  <th>Room Type</th>
-                  <th>INR Rate</th>
-                  <th>USD Rate</th>
+                  <th>Contact Number</th>
                   <th className="text-center">Actions</th>
                 </tr>
               </thead>
@@ -216,36 +246,8 @@ export default function HotelsPage() {
                       )}
                     </td>
                     <td className="text-slate-500">{h.city}, {h.country}</td>
-                    <td>
-                      <div className="flex flex-wrap gap-1">
-                        {h.costPerRoom?.map((c, idx) => (
-                          <span key={idx} className="badge badge-blue">{c.mealPlan}</span>
-                        ))}
-                      </div>
-                    </td>
                     <td className="text-slate-600">
-                      {h.costPerRoom?.map((c, idx) => (
-                        <div key={idx} className="text-xs">{c.roomCategory || "—"}</div>
-                      ))}
-                    </td>
-                    <td className="text-slate-600">
-                      {h.costPerRoom?.map((c, idx) => (
-                        <div key={idx} className="text-xs">{c.roomType || "—"}</div>
-                      ))}
-                    </td>
-                    <td className="text-slate-600">
-                      {h.costPerRoom?.map((c, idx) => (
-                        <div key={idx} className="text-xs">
-                          ₹{c.inrRate?.toLocaleString()}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="text-slate-600">
-                      {h.costPerRoom?.map((c, idx) => (
-                        <div key={idx} className="text-xs">
-                          ${c.usdRate}
-                        </div>
-                      ))}
+                      {h.contactNumbers?.filter(Boolean).join(" / ") || "—"}
                     </td>
                     <td>
                       <div className="flex justify-center gap-1">

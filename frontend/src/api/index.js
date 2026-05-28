@@ -18,6 +18,7 @@ export const hotelAPI = {
 // ── Bookings ────────────────────────────────────────────────────────
 export const bookingAPI = {
   getNextId:    ()           => api.get("/bookings/next-id"),
+  getByQueryId: (queryId)    => api.get(`/bookings/by-query-id/${queryId}`),
   getAll:       (params)     => api.get("/bookings", { params }),
   getById:      (id)         => api.get(`/bookings/${id}`),
   create:       (data)       => api.post("/bookings", data),

@@ -1,14 +1,26 @@
 import mongoose from "mongoose";
 
+const roomBlockSchema = new mongoose.Schema(
+  {
+    roomCategory: { type: String, trim: true },
+    noOfRooms:    { type: String, trim: true },
+    roomType:     { type: String, trim: true },
+  },
+  { _id: false }
+);
+
 const hotelBlockSchema = new mongoose.Schema(
   {
     confirmationNumber: { type: String, trim: true },
     hotelName:          { type: String, trim: true },
     hotelCity:          { type: String, trim: true },
     hotelCountry:       { type: String, trim: true },
+    // Legacy single-room fields (kept for backward compatibility with old vouchers)
     roomCategory:       { type: String, trim: true },
     noOfRooms:          { type: String, trim: true },
     roomType:           { type: String, trim: true },
+    // New multi-room support
+    rooms:              { type: [roomBlockSchema], default: [] },
     mealPlan:           { type: String, trim: true },
     visit1in:           { type: String, default: "N/A" },
     visit1out:          { type: String, default: "N/A" },
@@ -26,6 +38,7 @@ const voucherSchema = new mongoose.Schema(
   {
     guestName:       { type: String, required: [true, "Guest name is required"], trim: true },
     nationality:     { type: String, trim: true },
+    bookingId:       { type: String, trim: true, default: "" }, // queryId from Booking, e.g. ASA2026100
     // ── NEW client fields ──
     contactNumber:      { type: String, trim: true },
     mealInstruction:    { type: String, trim: true },

@@ -108,3 +108,74 @@ export function SectionTitle({ children }) {
     </h3>
   );
 }
+
+// ── Hotel Search Select ────────────────────────────────────────────
+// Searchable dropdown for picking a hotel by name.
+// `hotels` is the full list; `value` is the current hotel name string.
+// `onSelect(hotel)` fires with the full hotel object on pick;
+// `onChange(name)` fires while the user types (so unmatched names still persist).
+import { useEffect, useMemo, useRef, useState } from "react";
+
+export function HotelSearchSelect({ hotels = [], value = "", onSelect, onChange, placeholder = "Search hotel…" }) {
+  const [query, setQuery] = useState(value || "");
+  const [open, setOpen]   = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => { setQuery(value || ""); }, [value]);
+
+  useEffect(() => {
+    const close = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return hotels.slice(0, 50);
+    return hotels.filter((h) =>
+      [h.name, h.city, h.country].some((f) => (f || "").toLowerCase().includes(q))
+    ).slice(0, 50);
+  }, [hotels, query]);
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <input
+        className="input"
+        value={query}
+        placeholder={placeholder}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+          if (onChange) onChange(e.target.value);
+        }}
+      />
+      {open && (
+        <div className="absolute z-30 mt-1 w-full max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-slate-400">No hotels found</div>
+          ) : (
+            filtered.map((h) => (
+              <button
+                type="button"
+                key={h._id}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setQuery(h.name);
+                  setOpen(false);
+                  if (onSelect) onSelect(h);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-brand-50 text-sm border-b border-slate-100 last:border-0"
+              >
+                <div className="font-medium text-slate-800">{h.name}</div>
+                <div className="text-xs text-slate-500">
+                  {[h.city, h.country].filter(Boolean).join(", ")}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

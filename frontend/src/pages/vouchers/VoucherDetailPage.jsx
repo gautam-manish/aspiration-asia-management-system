@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { voucherAPI, hotelAPI } from "../../api";
+import { voucherAPI, hotelAPI, bookingAPI } from "../../api";
 import { getError } from "../../utils/helpers";
-import { PageLoader, Field } from "../../components/common";
+import { PageLoader, Field, HotelSearchSelect } from "../../components/common";
 import toast from "react-hot-toast";
 
 const ensureUrl = (url = "") => {
@@ -109,18 +109,21 @@ function VoucherPDF({ v }) {
         <ConfirmBanner />
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <tbody>
-            <tr><td style={{ ...td, fontWeight: 600, width: "40%" }}>GUEST NAME</td><td style={{ ...td, fontWeight: 700 }}>{v.guestName}</td></tr>
-            <tr><td style={{ ...tdB, fontWeight: 600 }}>NATIONALITY</td><td style={tdB}>{v.nationality || "—"}</td></tr>
-            <tr><td style={{ ...td, fontWeight: 600 }}>CONTACT NUMBER</td><td style={td}>{v.contactNumber || "—"}</td></tr>
-            <tr><td style={{ ...tdB, fontWeight: 600 }}>MEAL INSTRUCTION</td><td style={tdB}>{v.mealInstruction || "—"}</td></tr>
-            <tr><td style={{ ...td, fontWeight: 600 }}>WHEEL CHAIR</td><td style={td}>{v.wheelChair || "—"}</td></tr>
-            <tr><td style={{ ...tdB, fontWeight: 600 }}>ARRIVAL FLIGHT DETAILS</td><td style={tdB}>{v.arrivalFlightDetails || "—"}</td></tr>
-            <tr><td style={{ ...td, fontWeight: 600 }}>PREFERRED FLOOR</td><td style={td}>{v.preferredFloor || "—"}</td></tr>
-            <tr><td style={{ ...tdB, fontWeight: 600 }}>TOTAL PAX</td><td style={tdB}>{totalPax}</td></tr>
-            <tr><td style={{ ...td, fontWeight: 600 }}>ADULTS</td><td style={td}>{v.pax?.adults || 0}</td></tr>
-            <tr><td style={{ ...tdB, fontWeight: 600 }}>CHILD WITH BED</td><td style={tdB}>{v.pax?.childWithBed || "—"}</td></tr>
-            <tr><td style={{ ...td, fontWeight: 600 }}>CHILD WITHOUT BED (6-10 YRS)</td><td style={td}>{v.pax?.childWithoutBed || "—"}</td></tr>
-            <tr><td style={{ ...tdB, fontWeight: 600 }}>CHILD BELOW 5 YRS</td><td style={tdB}>{v.pax?.childBelow5 || "—"}</td></tr>
+            {v.bookingId ? (
+              <tr><td style={{ ...td, fontWeight: 600, width: "40%" }}>BOOKING ID</td><td style={{ ...td, fontWeight: 700 }}>{v.bookingId}</td></tr>
+            ) : null}
+            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600, width: "40%" }}>GUEST NAME</td><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 700 }}>{v.guestName}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>NATIONALITY</td><td style={v.bookingId ? td : tdB}>{v.nationality || "—"}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600 }}>CONTACT NUMBER</td><td style={v.bookingId ? tdB : td}>{v.contactNumber || "—"}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>MEAL INSTRUCTION</td><td style={v.bookingId ? td : tdB}>{v.mealInstruction || "—"}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600 }}>WHEEL CHAIR</td><td style={v.bookingId ? tdB : td}>{v.wheelChair || "—"}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>ARRIVAL FLIGHT DETAILS</td><td style={v.bookingId ? td : tdB}>{v.arrivalFlightDetails || "—"}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600 }}>PREFERRED FLOOR</td><td style={v.bookingId ? tdB : td}>{v.preferredFloor || "—"}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>TOTAL PAX</td><td style={v.bookingId ? td : tdB}>{totalPax}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600 }}>ADULTS</td><td style={v.bookingId ? tdB : td}>{v.pax?.adults || 0}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>CHILD WITH BED</td><td style={v.bookingId ? td : tdB}>{v.pax?.childWithBed || "—"}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600 }}>CHILD WITHOUT BED (6-10 YRS)</td><td style={v.bookingId ? tdB : td}>{v.pax?.childWithoutBed || "—"}</td></tr>
+            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>CHILD BELOW 5 YRS</td><td style={v.bookingId ? td : tdB}>{v.pax?.childBelow5 || "—"}</td></tr>
           </tbody>
         </table>
       </div>
@@ -131,6 +134,10 @@ function VoucherPDF({ v }) {
         const mapsCell = h.googleMapsLink
           ? <a href={ensureUrl(h.googleMapsLink)} style={{ color: "#2563eb", textDecoration: "underline", wordBreak: "break-all" }}>{h.googleMapsLink}</a>
           : "—";
+
+        const rooms = (h.rooms && h.rooms.length > 0)
+          ? h.rooms
+          : [{ roomCategory: h.roomCategory, noOfRooms: h.noOfRooms, roomType: h.roomType }];
 
         return (
           <div
@@ -172,10 +179,42 @@ function VoucherPDF({ v }) {
                   <tr><td style={{ ...td, fontWeight: 600, width: "40%" }}>CONFIRMATION NUMBER</td><td style={{ ...td, fontWeight: "bold" }}>{h.confirmationNumber || ""}</td></tr>
                   <tr><td style={{ ...tdB, fontWeight: 600 }}>HOTEL NAME</td><td style={tdB}>{h.hotelName || ""}</td></tr>
                   <tr><td style={{ ...td, fontWeight: 600 }}>CITY / COUNTRY</td><td style={td}>{h.hotelCity ? `${h.hotelCity}, ${h.hotelCountry}` : "—"}</td></tr>
-                  <tr><td style={{ ...tdB, fontWeight: 600 }}>ROOM CATEGORY</td><td style={tdB}>{h.roomCategory || ""}</td></tr>
-                  <tr><td style={{ ...td, fontWeight: 600 }}>NO. OF ROOMS</td><td style={td}>{h.noOfRooms || ""}</td></tr>
-                  <tr><td style={{ ...tdB, fontWeight: 600 }}>ROOM TYPE</td><td style={tdB}>{h.roomType || ""}</td></tr>
-                  <tr><td style={{ ...td, fontWeight: 600 }}>MEAL PLAN</td><td style={td}>{h.mealPlan || ""}</td></tr>
+                  {(() => {
+                    const totalRooms = rooms.reduce((sum, r) => sum + (Number(r.noOfRooms) || 0), 0);
+                    const allocations = rooms
+                      .filter((r) => r.noOfRooms || r.roomCategory || r.roomType)
+                      .map((r) => {
+                        const count = r.noOfRooms || "";
+                        const cat   = r.roomCategory || "";
+                        const type  = r.roomType || "";
+                        const right = [cat, type].filter(Boolean).join(", ");
+                        return [count, right].filter(Boolean).join(" ");
+                      });
+                    return (
+                      <Fragment>
+                        <tr>
+                          <td style={{ ...tdB, fontWeight: 600 }}>NO. OF ROOMS</td>
+                          <td style={tdB}>{totalRooms || h.noOfRooms || ""}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ ...td, fontWeight: 600 }}>ROOM ALLOCATIONS</td>
+                          <td style={td}>
+                            {allocations.length > 0
+                              ? allocations.map((line, idx) => (
+                                  <Fragment key={idx}>
+                                    {line}
+                                    {idx < allocations.length - 1 ? <br /> : null}
+                                  </Fragment>
+                                ))
+                              : (h.roomCategory || h.roomType
+                                  ? [h.roomCategory, h.roomType].filter(Boolean).join(", ")
+                                  : "—")}
+                          </td>
+                        </tr>
+                      </Fragment>
+                    );
+                  })()}
+                  <tr><td style={{ ...tdB, fontWeight: 600 }}>MEAL PLAN</td><td style={tdB}>{h.mealPlan || ""}</td></tr>
                   <tr><td style={{ ...tdB, fontWeight: 600 }}>HOTEL CONTACT</td><td style={tdB}>{h.hotelContactNumber || "—"}</td></tr>
                   <tr><td style={{ ...td, fontWeight: 600 }}>GOOGLE MAPS</td><td style={td}>{mapsCell}</td></tr>
                   <tr>
@@ -203,6 +242,7 @@ function VoucherPDF({ v }) {
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
 function EditModal({ voucher, hotels, onClose, onSaved }) {
   const [form, setForm] = useState({
+    bookingId:            voucher.bookingId || "",
     guestName:            voucher.guestName || "",
     nationality:          voucher.nationality || "",
     contactNumber:        voucher.contactNumber || "",
@@ -216,12 +256,45 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
       childWithoutBed: voucher.pax?.childWithoutBed || "",
       childBelow5:     voucher.pax?.childBelow5 || "",
     },
-    hotelEntries: (voucher.hotels || []).map((h) => ({ ...h })),
+    hotelEntries: (voucher.hotels || []).map((h) => ({
+      ...h,
+      rooms: (h.rooms && h.rooms.length > 0)
+        ? h.rooms.map((r) => ({ ...r }))
+        : [{ roomCategory: h.roomCategory || "", noOfRooms: h.noOfRooms || "", roomType: h.roomType || "" }],
+    })),
   });
   const [saving, setSaving] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
 
   const set    = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setPax = (k, v) => setForm((f) => ({ ...f, pax: { ...f.pax, [k]: v } }));
+
+  const lookupBooking = async () => {
+    const id = (form.bookingId || "").trim();
+    if (!id) { toast.error("Enter a booking ID first"); return; }
+    setLookingUp(true);
+    try {
+      const { data } = await bookingAPI.getByQueryId(id);
+      const b = data.data;
+      setForm((f) => ({
+        ...f,
+        bookingId:     b.queryId || id,
+        guestName:     b.clientName || f.guestName,
+        contactNumber: b.mobile     || f.contactNumber,
+        pax: {
+          adults:          Number(b.adults)    || 0,
+          childWithBed:    Number(b.childEB)   || 0,
+          childWithoutBed: Number(b.childNoEB) || 0,
+          childBelow5:     Number(b.childU5)   || 0,
+        },
+      }));
+      toast.success(`Booking ${b.queryId} loaded`);
+    } catch (err) {
+      toast.error(getError(err));
+    } finally {
+      setLookingUp(false);
+    }
+  };
 
   const addHotel = () =>
     setForm((f) => ({
@@ -231,7 +304,8 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
         {
           confirmationNumber: Math.floor(10000000 + Math.random() * 90000000).toString(),
           hotelName: "", hotelCity: "", hotelCountry: "",
-          roomCategory: "", noOfRooms: "", roomType: "", mealPlan: "",
+          rooms: [{ roomCategory: "", noOfRooms: "", roomType: "" }],
+          mealPlan: "",
           visit1in: "", visit1out: "", visit2in: "", visit2out: "",
           hotelContactNumber: "", googleMapsLink: "", includes: "",
         },
@@ -248,12 +322,47 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
       return { ...f, hotelEntries: entries };
     });
 
-  const onHotelSelect = (i, hotelId) => {
-    const h = hotels.find((x) => x._id === hotelId);
-    if (!h) return;
+  const setRoom = (hi, ri, k, v) =>
     setForm((f) => {
       const entries = [...f.hotelEntries];
-      entries[i] = { ...entries[i], hotelName: h.name, hotelCity: h.city || "", hotelCountry: h.country || "" };
+      const rooms = [...(entries[hi].rooms || [])];
+      rooms[ri] = { ...rooms[ri], [k]: v };
+      entries[hi] = { ...entries[hi], rooms };
+      return { ...f, hotelEntries: entries };
+    });
+
+  const addRoom = (hi) =>
+    setForm((f) => {
+      const entries = [...f.hotelEntries];
+      entries[hi] = {
+        ...entries[hi],
+        rooms: [...(entries[hi].rooms || []), { roomCategory: "", noOfRooms: "", roomType: "" }],
+      };
+      return { ...f, hotelEntries: entries };
+    });
+
+  const removeRoom = (hi, ri) =>
+    setForm((f) => {
+      const entries = [...f.hotelEntries];
+      entries[hi] = {
+        ...entries[hi],
+        rooms: (entries[hi].rooms || []).filter((_, idx) => idx !== ri),
+      };
+      return { ...f, hotelEntries: entries };
+    });
+
+  const onHotelSelect = (i, picked) => {
+    if (!picked) return;
+    setForm((f) => {
+      const entries = [...f.hotelEntries];
+      entries[i] = {
+        ...entries[i],
+        hotelName:          picked.name || "",
+        hotelCity:          picked.city || "",
+        hotelCountry:       picked.country || "",
+        hotelContactNumber: (picked.contactNumbers && picked.contactNumbers[0]) || entries[i].hotelContactNumber || "",
+        googleMapsLink:     picked.googleMapUrl || entries[i].googleMapsLink || "",
+      };
       return { ...f, hotelEntries: entries };
     });
   };
@@ -281,6 +390,31 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
         </div>
 
         <div className="modal-body space-y-5" style={{ maxHeight: "72vh", overflowY: "auto" }}>
+          {/* Booking Reference */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Booking Reference</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Booking ID" className="col-span-2">
+                <div className="flex gap-2">
+                  <input
+                    className="input flex-1"
+                    value={form.bookingId}
+                    onChange={(e) => set("bookingId", e.target.value)}
+                    placeholder="e.g. ASA2026100"
+                  />
+                  <button
+                    type="button"
+                    onClick={lookupBooking}
+                    disabled={lookingUp || !(form.bookingId || "").trim()}
+                    className="btn-secondary text-xs whitespace-nowrap"
+                  >
+                    {lookingUp ? "Fetching…" : <><i className="fa fa-search" /> Fetch</>}
+                  </button>
+                </div>
+              </Field>
+            </div>
+          </div>
+
           {/* Guest */}
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Guest Details</p>
@@ -329,21 +463,16 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
                       <input className="input" value={h.confirmationNumber} onChange={(e) => setHotel(i, "confirmationNumber", e.target.value)} />
                     </Field>
                     <Field label="Hotel Name" className="col-span-2">
-                      <select className="input" value={hotels.find((x) => x.name === h.hotelName)?._id || ""} onChange={(e) => onHotelSelect(i, e.target.value)}>
-                        <option value="">Select hotel…</option>
-                        {hotels.map((x) => <option key={x._id} value={x._id}>{x.name}</option>)}
-                      </select>
+                      <HotelSearchSelect
+                        hotels={hotels}
+                        value={h.hotelName}
+                        onChange={(name) => setHotel(i, "hotelName", name)}
+                        onSelect={(picked) => onHotelSelect(i, picked)}
+                        placeholder="Search hotel by name, city…"
+                      />
                     </Field>
-                    <Field label="City"><input className="input bg-slate-100" value={h.hotelCity} readOnly /></Field>
-                    <Field label="Country"><input className="input bg-slate-100" value={h.hotelCountry} readOnly /></Field>
-                    <Field label="Room Category"><input className="input" value={h.roomCategory} onChange={(e) => setHotel(i, "roomCategory", e.target.value)} /></Field>
-                    <Field label="No. of Rooms"><input className="input" value={h.noOfRooms} onChange={(e) => setHotel(i, "noOfRooms", e.target.value)} /></Field>
-                    <Field label="Room Type">
-                      <select className="input" value={h.roomType} onChange={(e) => setHotel(i, "roomType", e.target.value)}>
-                        <option value="">—</option>
-                        {ROOM_TYPES.map((t) => <option key={t}>{t}</option>)}
-                      </select>
-                    </Field>
+                    <Field label="City"><input className="input bg-slate-100" value={h.hotelCity} onChange={(e) => setHotel(i, "hotelCity", e.target.value)} /></Field>
+                    <Field label="Country"><input className="input bg-slate-100" value={h.hotelCountry} onChange={(e) => setHotel(i, "hotelCountry", e.target.value)} /></Field>
                     <Field label="Meal Plan">
                       <select className="input" value={h.mealPlan} onChange={(e) => setHotel(i, "mealPlan", e.target.value)}>
                         <option value="">—</option>
@@ -357,6 +486,42 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
                     <Field label="Hotel Contact"><input className="input" type="number" value={h.hotelContactNumber} onChange={(e) => setHotel(i, "hotelContactNumber", e.target.value)} /></Field>
                     <Field label="Google Maps Link"><input className="input" value={h.googleMapsLink} onChange={(e) => setHotel(i, "googleMapsLink", e.target.value)} /></Field>
                     <Field label="Includes" className="col-span-2"><input className="input" value={h.includes} onChange={(e) => setHotel(i, "includes", e.target.value)} /></Field>
+                  </div>
+
+                  {/* Rooms (repeatable) */}
+                  <div className="flex items-center justify-between mt-3">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Rooms</p>
+                    <button onClick={() => addRoom(i)} className="btn-ghost text-xs text-brand-600">
+                      <i className="fa fa-plus" /> Add Room
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {(h.rooms || []).map((r, ri) => (
+                      <div key={ri} className="border border-slate-200 rounded-lg p-3 bg-white">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-semibold text-brand-600">Room #{ri + 1}</p>
+                          {(h.rooms || []).length > 1 && (
+                            <button onClick={() => removeRoom(i, ri)} className="btn-ghost text-xs text-red-500">
+                              <i className="fa fa-times" /> Remove
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <Field label="Room Category">
+                            <input className="input" value={r.roomCategory} onChange={(e) => setRoom(i, ri, "roomCategory", e.target.value)} />
+                          </Field>
+                          <Field label="Room Type">
+                            <select className="input" value={r.roomType} onChange={(e) => setRoom(i, ri, "roomType", e.target.value)}>
+                              <option value="">—</option>
+                              {ROOM_TYPES.map((t) => <option key={t}>{t}</option>)}
+                            </select>
+                          </Field>
+                          <Field label="No. of Rooms">
+                            <input className="input" value={r.noOfRooms} onChange={(e) => setRoom(i, ri, "noOfRooms", e.target.value)} />
+                          </Field>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -437,7 +602,10 @@ export default function VoucherDetailPage() {
           </button>
           <div>
             <h1 className="page-title">{voucher.guestName}</h1>
-            <p className="page-subtitle">Created on {date}</p>
+            <p className="page-subtitle">
+              {voucher.bookingId ? <><span className="font-mono text-brand-600">{voucher.bookingId}</span> · </> : null}
+              Created on {date}
+            </p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -464,6 +632,7 @@ export default function VoucherDetailPage() {
           </div>
           <div className="card-body grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             {[
+              ["Booking ID",       voucher.bookingId],
               ["Guest Name",       voucher.guestName],
               ["Nationality",      voucher.nationality],
               ["Contact",          voucher.contactNumber],
@@ -496,9 +665,6 @@ export default function VoucherDetailPage() {
               {[
                 ["Confirmation #",  h.confirmationNumber],
                 ["City / Country",  h.hotelCity ? `${h.hotelCity}, ${h.hotelCountry}` : "—"],
-                ["Room Category",   h.roomCategory],
-                ["Room Type",       h.roomType],
-                ["No. of Rooms",    h.noOfRooms],
                 ["Hotel Contact",   h.hotelContactNumber],
                 ["1st Visit",       h.visit1in && h.visit1in !== "N/A" ? `${h.visit1in} → ${h.visit1out}` : "—"],
                 ["2nd Visit",       h.visit2in && h.visit2in !== "N/A" ? `${h.visit2in} → ${h.visit2out}` : "—"],
@@ -509,6 +675,26 @@ export default function VoucherDetailPage() {
                   <p className="font-medium text-slate-800">{val || "—"}</p>
                 </div>
               ))}
+              {(() => {
+                const rooms = (h.rooms && h.rooms.length > 0)
+                  ? h.rooms
+                  : [{ roomCategory: h.roomCategory, noOfRooms: h.noOfRooms, roomType: h.roomType }];
+                return (
+                  <div className="col-span-2 md:col-span-3">
+                    <p className="text-xs text-slate-400 mb-1">Rooms</p>
+                    <div className="space-y-1">
+                      {rooms.map((r, ri) => (
+                        <div key={ri} className="text-xs text-slate-700 bg-slate-50 rounded px-3 py-1.5 border border-slate-100">
+                          <span className="font-semibold text-slate-500">#{ri + 1}</span>{" "}
+                          <span className="font-medium">{r.roomCategory || "—"}</span>
+                          {r.roomType ? <span> · {r.roomType}</span> : null}
+                          {r.noOfRooms ? <span> · {r.noOfRooms} room(s)</span> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         ))}

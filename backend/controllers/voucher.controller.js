@@ -7,7 +7,7 @@ import Voucher from "../models/voucher.model.js";
 export const createVoucher = async (req, res) => {
   try {
     const {
-      guestName, nationality,
+      guestName, nationality, bookingId,
       contactNumber, mealInstruction, wheelChair, arrivalFlightDetails, preferredFloor,
       pax, hotels,
     } = req.body;
@@ -20,7 +20,7 @@ export const createVoucher = async (req, res) => {
     }
 
     const voucher = await Voucher.create({
-      guestName, nationality,
+      guestName, nationality, bookingId,
       contactNumber, mealInstruction, wheelChair, arrivalFlightDetails, preferredFloor,
       pax, hotels,
     });

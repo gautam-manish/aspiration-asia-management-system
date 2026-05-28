@@ -7,7 +7,7 @@ import Hotel from "../models/hotel.model.js";
 // ─────────────────────────────────────────
 export const createHotel = async (req, res) => {
   try {
-    const { name, country, city, costPerRoom } = req.body;
+    const { name, country, city, contactNumbers, googleMapUrl, costPerRoom } = req.body;
 
     // ── Duplicate Check ──────────────────────────
     const existingHotel = await Hotel.findOne({
@@ -24,7 +24,7 @@ export const createHotel = async (req, res) => {
     }
     // ─────────────────────────────────────────────
 
-    const hotel = await Hotel.create({ name, country, city, costPerRoom });
+    const hotel = await Hotel.create({ name, country, city, contactNumbers, googleMapUrl, costPerRoom });
 
     res.status(201).json({
       success: true,

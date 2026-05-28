@@ -53,6 +53,10 @@ const hotelSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    contactNumbers: {
+      type: [String],
+      default: [],
+    },
     costPerRoom: {
       type: [costPerRoomSchema],
       validate: {

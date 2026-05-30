@@ -18,6 +18,7 @@ export default function PurchaseRecordDetailPage() {
   const [pdfModal,   setPdfModal]   = useState(false);
   const [pdfFrom,    setPdfFrom]    = useState("");
   const [pdfTo,      setPdfTo]      = useState("");
+  const [pdfFiscal,  setPdfFiscal]  = useState("");
   const [txn,        setTxn]        = useState({ date: "", refNo: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
   const [saving,     setSaving]     = useState(false);
 
@@ -56,72 +57,140 @@ export default function PurchaseRecordDetailPage() {
     if (pdfTo)   txns = txns.filter((t) => t.date <= pdfTo);
 
     let runBal = Number(record.openingBalance || 0);
-    const rows = txns.map((t, i) => {
-      const dr = t.type === "dr" ? t.amount : 0;
-      const cr = t.type === "cr" ? t.amount : 0;
+    const totalDR = txns.reduce((s, t) => s + (t.type === "dr" ? Number(t.amount) || 0 : 0), 0);
+    const totalCR = txns.reduce((s, t) => s + (t.type === "cr" ? Number(t.amount) || 0 : 0), 0);
+
+    // Description cell — shows description / clientName / bank stacked vertically.
+    const descCell = (t) => {
+      const lines = [];
+      lines.push(t.description ? `<div>${t.description}</div>` : `<div>—</div>`);
+      if (t.clientName) lines.push(`<div style="font-size:11px;color:#475569;">${t.clientName}</div>`);
+      if (t.bank)       lines.push(`<div style="font-size:11px;color:#475569;">${t.bank}</div>`);
+      return lines.join("");
+    };
+
+    const rows = txns.map((t) => {
+      const dr = t.type === "dr" ? Number(t.amount) || 0 : 0;
+      const cr = t.type === "cr" ? Number(t.amount) || 0 : 0;
       runBal = runBal + dr - cr;
       const isDR = runBal >= 0;
       return `<tr>
-        <td style="padding:8px 10px;border:1px solid #cbd5e1;font-size:11px;">${t.date || ""}</td>
-        <td style="padding:8px 10px;border:1px solid #cbd5e1;font-size:11px;">${t.refNo || ""}</td>
-        <td style="padding:8px 10px;border:1px solid #cbd5e1;font-size:11px;">${t.description || ""}</td>
-        <td style="padding:8px 10px;border:1px solid #cbd5e1;font-size:11px;text-align:right;color:${dr>0?"#dc2626":"#94a3b8"};">${dr > 0 ? "Rs. "+fmt(dr) : ""}</td>
-        <td style="padding:8px 10px;border:1px solid #cbd5e1;font-size:11px;text-align:right;color:${cr>0?"#16a34a":"#94a3b8"};">${cr > 0 ? "Rs. "+fmt(cr) : ""}</td>
-        <td style="padding:8px 10px;border:1px solid #cbd5e1;font-size:11px;text-align:right;font-weight:700;color:${isDR?"#dc2626":"#16a34a"};">Rs. ${fmt(Math.abs(runBal))} ${isDR?"DR":"CR"}</td>
+        <td style="padding:14px 12px;border:1px solid #94a3b8;font-size:12px;vertical-align:top;">${t.date || "—"}</td>
+        <td style="padding:14px 12px;border:1px solid #94a3b8;font-size:12px;vertical-align:top;">${t.refNo || "—"}</td>
+        <td style="padding:14px 12px;border:1px solid #94a3b8;font-size:12px;vertical-align:top;line-height:1.5;">${descCell(t)}</td>
+        <td style="padding:14px 12px;border:1px solid #94a3b8;font-size:12px;text-align:right;font-weight:700;vertical-align:top;">${dr > 0 ? "Rs " + fmt(dr) : "—"}</td>
+        <td style="padding:14px 12px;border:1px solid #94a3b8;font-size:12px;text-align:right;font-weight:700;vertical-align:top;">${cr > 0 ? "Rs " + fmt(cr) : "—"}</td>
+        <td style="padding:14px 12px;border:1px solid #94a3b8;font-size:12px;text-align:right;font-weight:700;vertical-align:top;">Rs ${fmt(Math.abs(runBal))} ${isDR ? "DR" : "CR"}</td>
       </tr>`;
     }).join("");
 
-    const win = window.open("", "_blank", "width=900,height=700");
+    const closing = Number(record.closingBalance || 0);
+    const closingLabel = closing >= 0 ? "DR" : "CR";
+
+    const win = window.open("", "_blank", "width=900,height=1100");
     win.document.write(`<!DOCTYPE html><html><head>
-      <title>Ledger — ${record.debtorName}</title>
+      <title>Purchase Ledger — ${record.debtorName}</title>
       <style>
-        @page { size: A4 landscape; margin: 12mm; }
+        @page { size: A4 portrait; margin: 12mm; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
-        body { margin: 0; font-family: Arial, sans-serif; font-size: 12px; color: #1e293b; }
-        table { width: 100%; border-collapse: collapse; }
-        th { background: #1e3a8a; color: white; padding: 9px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid #1e3a8a; text-align: left; }
+        body { margin: 0; font-family: Arial, sans-serif; font-size: 11px; color: #0f172a; }
+        table { border-collapse: collapse; }
+        .label { font-size: 11px; color: #0f172a; }
+        .val   { font-size: 11px; color: #0f172a; font-weight: 700; }
       </style>
     </head><body>
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
-        <div>
-          <div style="font-size:18px;font-weight:700;color:#1e293b;">${record.debtorName}</div>
-          ${record.debtorCompany ? `<div style="color:#475569;font-size:13px;">${record.debtorCompany}</div>` : ""}
-          ${record.debtorPan ? `<div style="color:#64748b;font-size:11px;">PAN/VAT: ${record.debtorPan}</div>` : ""}
-        </div>
-        <div style="text-align:right;">
-          <div style="font-size:16px;font-weight:700;color:#1e3a8a;">PURCHASE LEDGER</div>
-          <div style="font-size:11px;color:#64748b;">Aspiration Asia Trekking &amp; Expedition Pvt Ltd</div>
-          ${record.fiscalYear ? `<div style="font-size:11px;color:#64748b;">FY: ${record.fiscalYear}</div>` : ""}
-          ${(pdfFrom || pdfTo) ? `<div style="font-size:11px;color:#64748b;">Period: ${pdfFrom || "Start"} to ${pdfTo || "End"}</div>` : ""}
+
+      <!-- ═══════ HEADER ═══════ -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <img src="https://i.ibb.co/bRJr7nNM/images.png" style="height:75px;" alt="logo" />
+        <div style="text-align:right;font-size:11px;line-height:1.55;">
+          <div style="font-size:14px;font-weight:700;color:#0f172a;">Aspiration Asia Trekking and Expedition Pvt Ltd.</div>
+          <div>Bhaktapur Durbar Square - Kathmandu, Nepal</div>
+          <div>Web: www.aspirationasia.com</div>
+          <div>Email: sales@aspirationasia.com / reservations@aspirationasia.com</div>
+          <div>Contact: +977-982761738 / +977-9851021924</div>
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px;">
-        ${[["Opening Balance","Rs. "+fmt(record.openingBalance),"#1e293b"],["Total Debit (DR)","Rs. "+fmt(record.totalDebit),"#dc2626"],["Total Credit (CR)","Rs. "+fmt(record.totalCredit),"#16a34a"],["Closing Balance","Rs. "+fmt(Math.abs(record.closingBalance))+" "+(record.closingBalance>=0?"DR":"CR"),record.closingBalance>=0?"#dc2626":"#16a34a"]].map(([l,v,c])=>`
-          <div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;font-weight:600;">${l}</div>
-            <div style="font-size:14px;font-weight:700;color:${c};margin-top:2px;">${v}</div>
-          </div>`).join("")}
+      <hr style="border:none;border-top:1px solid #94a3b8;margin:8px 0 14px;" />
+
+      <!-- ═══════ TOP SUMMARY ═══════ -->
+      <div style="display:flex;gap:0;margin-bottom:18px;align-items:flex-start;">
+
+        <!-- Left: Ledger / Debtor info -->
+        <div style="flex:1;padding-right:14px;font-size:11px;line-height:1.85;">
+          <div style="font-weight:700;color:#0f172a;">LEDGER BALANCE REPORT : SUNDRY DEBTORS</div>
+          <div><strong>FISCAL YEAR :</strong> ${pdfFiscal || record.fiscalYear || "—"}</div>
+          <div><strong>NAME :</strong> ${(record.debtorName || "").toUpperCase()}</div>
+          <div><strong>PAN :</strong> ${record.debtorPan || "—"}</div>
+          <div><strong>PHONE :</strong> ${record.debtorPhone || ""}</div>
+          <div><strong>ADDRESS :</strong> ${record.debtorAddress || "—"}</div>
+        </div>
+
+        <!-- Right: Balance summary table -->
+        <table style="flex:0 0 55%;border-collapse:collapse;font-size:11px;">
+          <tr>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;font-weight:700;width:25%;">Opening</td>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;text-align:right;font-weight:700;width:55%;">Rs ${fmt(record.openingBalance)}</td>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;font-weight:700;width:20%;text-align:center;">${(Number(record.openingBalance) || 0) >= 0 ? "DR" : "CR"}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;font-weight:700;">Debit</td>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;text-align:right;font-weight:700;">Rs ${fmt(record.totalDebit)}</td>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;"></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;font-weight:700;">Credit</td>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;text-align:right;font-weight:700;">Rs ${fmt(record.totalCredit)}</td>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;"></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;font-weight:700;">Closing</td>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;text-align:right;font-weight:700;">Rs ${fmt(Math.abs(closing))}</td>
+            <td style="padding:8px 10px;border:1px solid #94a3b8;font-weight:700;text-align:center;">${closingLabel}</td>
+          </tr>
+        </table>
       </div>
 
-      <table>
-        <thead><tr>
-          <th>Date</th><th>Ref / Voucher</th><th>Description</th>
-          <th style="text-align:right;">Debit (DR)</th>
-          <th style="text-align:right;">Credit (CR)</th>
-          <th style="text-align:right;">Balance</th>
-        </tr></thead>
+      <!-- ═══════ TRANSACTION TABLE ═══════ -->
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th style="padding:8px 8px;border:1px solid #94a3b8;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:0.04em;">Date</th>
+            <th style="padding:8px 8px;border:1px solid #94a3b8;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:0.04em;">Ref / Voucher</th>
+            <th style="padding:8px 8px;border:1px solid #94a3b8;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:0.04em;">Description</th>
+            <th style="padding:8px 8px;border:1px solid #94a3b8;font-size:10px;text-align:right;text-transform:uppercase;letter-spacing:0.04em;">Debit</th>
+            <th style="padding:8px 8px;border:1px solid #94a3b8;font-size:10px;text-align:right;text-transform:uppercase;letter-spacing:0.04em;">Credit</th>
+            <th style="padding:8px 8px;border:1px solid #94a3b8;font-size:10px;text-align:right;text-transform:uppercase;letter-spacing:0.04em;">Balance</th>
+          </tr>
+        </thead>
         <tbody>
-          <tr style="background:#f8fafc;">
-            <td colspan="5" style="padding:7px 10px;border:1px solid #cbd5e1;font-size:11px;font-weight:600;color:#475569;">Opening Balance</td>
-            <td style="padding:7px 10px;border:1px solid #cbd5e1;font-size:11px;text-align:right;font-weight:700;">Rs. ${fmt(record.openingBalance)} DR</td>
+          <tr>
+            <td style="padding:10px 8px;border:1px solid #94a3b8;font-size:11px;">—</td>
+            <td style="padding:10px 8px;border:1px solid #94a3b8;font-size:11px;">—</td>
+            <td style="padding:10px 8px;border:1px solid #94a3b8;font-size:11px;font-weight:700;">Opening Balance</td>
+            <td style="padding:10px 8px;border:1px solid #94a3b8;font-size:11px;text-align:right;">Rs ${fmt(record.openingBalance)}</td>
+            <td style="padding:10px 8px;border:1px solid #94a3b8;font-size:11px;text-align:right;">—</td>
+            <td style="padding:10px 8px;border:1px solid #94a3b8;font-size:11px;text-align:right;font-weight:700;">Rs ${fmt(Math.abs(Number(record.openingBalance) || 0))} ${(Number(record.openingBalance) || 0) >= 0 ? "DR" : "CR"}</td>
           </tr>
           ${rows}
+          <tr>
+            <td colspan="3" style="padding:10px 8px;border:1px solid #94a3b8;font-size:11px;font-weight:700;">TOTAL (—)</td>
+            <td style="padding:10px 8px;border:1px solid #94a3b8;font-size:11px;text-align:right;font-weight:700;">Rs ${fmt(totalDR)}</td>
+            <td style="padding:10px 8px;border:1px solid #94a3b8;font-size:11px;text-align:right;font-weight:700;">Rs ${fmt(totalCR)}</td>
+            <td style="padding:10px 8px;border:1px solid #94a3b8;font-size:11px;text-align:right;font-weight:700;">Rs ${fmt(Math.abs(closing))} ${closingLabel}</td>
+          </tr>
         </tbody>
       </table>
-      <div style="text-align:center;margin-top:14px;font-size:10px;color:#94a3b8;font-style:italic;">
-        Generated on ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})} — Aspiration Asia Trekking &amp; Expedition Pvt Ltd
+
+      <hr style="border:none;border-top:1px solid #94a3b8;margin:18px 0 10px;" />
+
+      <!-- ═══════ FOOTER ═══════ -->
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#475569;">
+        <div>Generated on: ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}</div>
+        <div>Aspiration Asia Trekking and Expedition Pvt Ltd.</div>
       </div>
+
     </body></html>`);
     win.document.close();
     win.focus();
@@ -146,7 +215,7 @@ export default function PurchaseRecordDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setPdfModal(true)} className="btn-secondary">
+          <button onClick={() => { setPdfFiscal(record.fiscalYear || ""); setPdfModal(true); }} className="btn-secondary">
             <i className="fa fa-file-pdf" /> PDF Report
           </button>
           <button onClick={() => setAddModal(true)} className="btn-primary">
@@ -268,6 +337,14 @@ export default function PurchaseRecordDetailPage() {
             </div>
             <div className="modal-body space-y-3">
               <p className="text-sm text-slate-500">Optionally filter by date range. Leave blank to include all transactions.</p>
+              <Field label="Fiscal Year">
+                <input
+                  className="input"
+                  value={pdfFiscal}
+                  onChange={(e) => setPdfFiscal(e.target.value)}
+                  placeholder="e.g. 2082/2083"
+                />
+              </Field>
               <Field label="From Date"><input className="input" type="date" value={pdfFrom} onChange={(e) => setPdfFrom(e.target.value)} /></Field>
               <Field label="To Date"><input className="input" type="date" value={pdfTo} onChange={(e) => setPdfTo(e.target.value)} /></Field>
             </div>

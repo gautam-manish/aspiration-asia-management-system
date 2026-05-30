@@ -5,12 +5,10 @@ import { getError, formatDate, numberToWords } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
 import toast from "react-hot-toast";
 
-const PAYMENT_TYPES = ["Guest Ledger", "City Ledger", "Cash", "Cheque", "Bank Transfer", "Other"];
-
 const EMPTY_FORM = {
   date: new Date().toISOString().split("T")[0],
   name: "", amount: "", amountInWords: "",
-  cashChequeNo: "", bank: "", paymentType: "Guest Ledger",
+  cashChequeNo: "", bank: "", paymentType: "",
 };
 
 function CashReceiptModal({ onClose, onSaved }) {
@@ -47,16 +45,9 @@ function CashReceiptModal({ onClose, onSaved }) {
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Date" required>
-                <input className="input" type="date" value={form.date} onChange={(e) => set("date", e.target.value)} required />
-              </Field>
-              <Field label="Payment Type">
-                <select className="input" value={form.paymentType} onChange={(e) => set("paymentType", e.target.value)}>
-                  {PAYMENT_TYPES.map((t) => <option key={t}>{t}</option>)}
-                </select>
-              </Field>
-            </div>
+            <Field label="Date" required>
+              <input className="input" type="date" value={form.date} onChange={(e) => set("date", e.target.value)} required />
+            </Field>
             <Field label="Received From (Name)" required>
               <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} required placeholder="Client / Company name" />
             </Field>
@@ -73,6 +64,9 @@ function CashReceiptModal({ onClose, onSaved }) {
             </Field>
             <Field label="Bank">
               <input className="input" value={form.bank} onChange={(e) => set("bank", e.target.value)} placeholder="Bank name (if applicable)" />
+            </Field>
+            <Field label="Payment Against For">
+              <input className="input" value={form.paymentType} onChange={(e) => set("paymentType", e.target.value)} placeholder="Nepal Tour" />
             </Field>
           </div>
           <div className="modal-footer">

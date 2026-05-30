@@ -77,6 +77,26 @@ export const getVoucherById = async (req, res) => {
 };
 
 // ─────────────────────────────────────────
+// @desc    Get Voucher by bookingId
+// @route   GET /api/vouchers/by-booking/:bookingId
+// ─────────────────────────────────────────
+export const getVoucherByBookingId = async (req, res) => {
+  try {
+    const bookingId = (req.params.bookingId || "").trim();
+    if (!bookingId) {
+      return res.status(400).json({ success: false, message: "Booking ID is required", data: null });
+    }
+    const voucher = await Voucher.findOne({ bookingId }).sort({ createdAt: -1 });
+    if (!voucher) {
+      return res.status(404).json({ success: false, message: "No voucher found for this booking", data: null });
+    }
+    res.status(200).json({ success: true, message: "Voucher fetched successfully", data: voucher });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message, data: null });
+  }
+};
+
+// ─────────────────────────────────────────
 // @desc    Update Voucher by ID
 // @route   PUT /api/vouchers/:id
 // ─────────────────────────────────────────

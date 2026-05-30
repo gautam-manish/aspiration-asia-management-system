@@ -20,7 +20,7 @@ export const getError = (err) =>
 export const truncate = (str, n = 30) =>
   str && str.length > n ? str.slice(0, n) + "…" : str || "—";
 
-// Number to words (for cash receipt)
+// Number to words (for invoices, cash receipts)
 const ones = ["", "One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
 const tens = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
 
@@ -34,10 +34,34 @@ function toWords(n) {
   return toWords(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + toWords(n % 10000000) : "");
 }
 
-export const numberToWords = (num) => {
-  const n = Math.floor(Number(num));
-  if (isNaN(n) || n === 0) return "";
-  return toWords(n) + " Only";
+// Map currency symbol → display labels for the words representation.
+// `major` = whole-unit name, `minor` = sub-unit name (1/100 of major).
+const CURRENCY_WORDS = {
+  "$":   { major: "Dollars", minor: "Cents" },
+  "€":   { major: "Euros",   minor: "Cents" },
+  "£":   { major: "Pounds",  minor: "Pence" },
+  "₹":   { major: "Rupees",  minor: "Paise" },
+  "Rs.": { major: "Rupees",  minor: "Paise" },
+  "Rs":  { major: "Rupees",  minor: "Paise" },
+};
+
+export const numberToWords = (num, currency = "Rs.") => {
+  const value = Number(num);
+  if (isNaN(value) || value === 0) return "";
+
+  // Round to 2 decimal places to handle floating-point noise, then split.
+  const rounded = Math.round(value * 100) / 100;
+  const whole   = Math.floor(rounded);
+  const frac    = Math.round((rounded - whole) * 100); // 0..99
+
+  const labels = CURRENCY_WORDS[currency] || { major: "Rupees", minor: "Paise" };
+
+  let parts = [];
+  if (whole > 0) parts.push(`${toWords(whole)} ${labels.major}`);
+  if (frac  > 0) parts.push(`${toWords(frac)} ${labels.minor}`);
+  if (parts.length === 0) return "";
+
+  return parts.join(" and ") + " Only";
 };
 
 // Today's date for input[type=date]

@@ -108,6 +108,12 @@
   }
 }
 
+/* Lock background scroll whenever any modal is open. */
+body:has(.modal-overlay),
+body:has(.modal-overlay) main {
+  overflow: hidden !important;
+}
+
 /* Print styles */
 @media print {
   .no-print { display: none !important; }

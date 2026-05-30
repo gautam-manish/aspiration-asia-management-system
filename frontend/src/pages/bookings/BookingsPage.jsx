@@ -31,6 +31,8 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [clientSearch, setClientSearch] = useState("");
 
+  const wasCancelled = isEdit && booking?.status === "cancelled";
+
   /* load creditors for dropdown */
   useEffect(() => {
     (async () => {
@@ -93,7 +95,7 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal max-w-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="font-display font-semibold text-slate-800">{isEdit ? "Edit Booking" : "New Booking"}</h2>
@@ -104,7 +106,7 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
             {/* Query ID */}
             <div className="bg-brand-50 border border-brand-100 rounded-lg px-4 py-2 flex items-center gap-2">
               <i className="fa fa-hashtag text-brand-500 text-sm" />
-              <span className="text-sm font-medium text-brand-700">Query ID: {form.queryId}</span>
+              <span className="text-sm font-medium text-brand-700">Booking ID: {form.queryId}</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -213,6 +215,17 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
                 </select>
               </Field>
             </div>
+
+            {isEdit && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Status">
+                  <select className="input" value={form.status || "confirmed"} onChange={(e) => set("status", e.target.value)}>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </Field>
+              </div>
+            )}
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
@@ -313,7 +326,7 @@ export default function BookingsPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Query ID</th>
+                  <th>Booking ID</th>
                   <th>Client / Agent</th>
                   <th>Destination</th>
                   <th>Arrival</th>
@@ -343,15 +356,13 @@ export default function BookingsPage() {
                         <button onClick={() => navigate(`/bookings/${b._id}`)} className="btn-ghost text-xs py-1 px-2" title="View">
                           <i className="fa fa-eye" />
                         </button>
+                        <button onClick={() => { setNextId(b.queryId); setModal(b); }} className="btn-ghost text-xs py-1 px-2" title="Edit">
+                          <i className="fa fa-edit" />
+                        </button>
                         {b.status === "confirmed" && (
-                          <>
-                            <button onClick={() => { setNextId(b.queryId); setModal(b); }} className="btn-ghost text-xs py-1 px-2" title="Edit">
-                              <i className="fa fa-edit" />
-                            </button>
-                            <button onClick={() => setCancelTarget(b)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2" title="Cancel">
-                              <i className="fa fa-ban" />
-                            </button>
-                          </>
+                          <button onClick={() => setCancelTarget(b)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2" title="Cancel">
+                            <i className="fa fa-ban" />
+                          </button>
                         )}
                       </div>
                     </td>

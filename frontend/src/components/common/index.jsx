@@ -31,7 +31,7 @@ export function Empty({ icon = "fa-inbox", message = "No records found", action 
 export function ConfirmModal({ open, title, message, onConfirm, onCancel, loading, variant = "danger" }) {
   if (!open) return null;
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay">
       <div className="modal max-w-sm" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-display font-semibold text-slate-800">{title}</h3>

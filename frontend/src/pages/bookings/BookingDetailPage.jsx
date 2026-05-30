@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useReactToPrint } from "react-to-print";
-import { bookingAPI } from "../../api";
+import { bookingAPI, invoiceAPI, voucherAPI } from "../../api";
 import { getError, formatDate } from "../../utils/helpers";
 import { PageLoader, StatusBadge } from "../../components/common";
+import { InvoicePrint } from "../invoices/InvoiceDetailPage";
+import { VoucherPDF } from "../vouchers/VoucherDetailPage";
 import toast from "react-hot-toast";
 
 function Row({ label, value }) {
@@ -200,7 +202,7 @@ function ItineraryModal({ booking, onClose, onSaved }) {
   ].filter(Boolean).join(", ");
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal max-w-xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="font-display font-semibold text-slate-800">
@@ -312,7 +314,7 @@ function ViewItineraryModal({ booking, onClose, onEdit }) {
         <PrintableItinerary booking={booking} printRef={printRef} />
       </div>
 
-      <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-overlay">
         <div className="modal max-w-xl" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
             <h2 className="font-display font-semibold text-slate-800">Itinerary</h2>
@@ -385,6 +387,9 @@ export default function BookingDetailPage() {
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modal, setModal]     = useState(null); // "add" | "view" | "edit" | null
+  const [linkLoading, setLinkLoading] = useState(""); // "invoice" | "voucher" | ""
+  const [previewInvoice, setPreviewInvoice] = useState(null);
+  const [previewVoucher, setPreviewVoucher] = useState(null);
 
   const fetchBooking = () => {
     setLoading(true);
@@ -396,6 +401,42 @@ export default function BookingDetailPage() {
   };
 
   useEffect(() => { fetchBooking(); }, [id]);
+
+  const openLinkedInvoice = async () => {
+    if (!booking?.queryId) return;
+    setLinkLoading("invoice");
+    try {
+      const { data } = await invoiceAPI.getByBookingId(booking.queryId);
+      setPreviewInvoice(data.data);
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        toast.error(`Invoice of booking ID ${booking.queryId} is not created`);
+      } else {
+        toast.error(getError(err));
+      }
+    } finally {
+      setLinkLoading("");
+    }
+  };
+
+  const openLinkedVoucher = async () => {
+    if (!booking?.queryId) return;
+    setLinkLoading("voucher");
+    try {
+      const { data } = await voucherAPI.getByBookingId(booking.queryId);
+      setPreviewVoucher(data.data);
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        toast.error(`Voucher of booking ID ${booking.queryId} is not created`);
+      } else {
+        toast.error(getError(err));
+      }
+    } finally {
+      setLinkLoading("");
+    }
+  };
 
   if (loading) return <PageLoader />;
   if (!booking) return <div className="text-center py-20 text-slate-400">Booking not found</div>;
@@ -422,8 +463,26 @@ export default function BookingDetailPage() {
             <span className="font-mono text-lg font-semibold text-brand-600">{booking.queryId}</span>
             <StatusBadge status={booking.status} />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-slate-400">Created {formatDate(booking.createdAt)}</span>
+            <button
+              onClick={openLinkedInvoice}
+              disabled={linkLoading === "invoice"}
+              className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
+              title="Open linked invoice"
+            >
+              <i className="fa fa-file-invoice text-xs" />
+              {linkLoading === "invoice" ? "Loading…" : "View Invoice"}
+            </button>
+            <button
+              onClick={openLinkedVoucher}
+              disabled={linkLoading === "voucher"}
+              className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
+              title="Open linked voucher"
+            >
+              <i className="fa fa-ticket-alt text-xs" />
+              {linkLoading === "voucher" ? "Loading…" : "View Voucher"}
+            </button>
             {hasItinerary ? (
               <button
                 onClick={() => setModal("view")}
@@ -491,6 +550,64 @@ export default function BookingDetailPage() {
           onClose={() => setModal(null)}
           onEdit={() => setModal("edit")}
         />
+      )}
+
+      {/* Linked Invoice Preview */}
+      {previewInvoice && (
+        <div className="modal-overlay">
+          <div className="modal max-w-4xl" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="flex items-center gap-3">
+                <h2 className="font-display font-semibold text-slate-800">Linked Invoice</h2>
+                <span className="font-mono text-xs text-brand-600">{previewInvoice.invoiceNumber}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => navigate(`/invoices/${previewInvoice._id}`)}
+                  className="btn-ghost text-xs py-1 px-2 text-brand-600"
+                  title="Open full page"
+                >
+                  <i className="fa fa-external-link" /> Open
+                </button>
+                <button onClick={() => setPreviewInvoice(null)} className="btn-ghost p-1 rounded-lg">
+                  <i className="fa fa-times" />
+                </button>
+              </div>
+            </div>
+            <div className="modal-body" style={{ maxHeight: "75vh", overflowY: "auto" }}>
+              <InvoicePrint inv={previewInvoice} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Linked Voucher Preview */}
+      {previewVoucher && (
+        <div className="modal-overlay">
+          <div className="modal max-w-4xl" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="flex items-center gap-3">
+                <h2 className="font-display font-semibold text-slate-800">Linked Voucher</h2>
+                <span className="text-xs text-slate-500">{previewVoucher.guestName}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => navigate(`/vouchers/${previewVoucher._id}`)}
+                  className="btn-ghost text-xs py-1 px-2 text-brand-600"
+                  title="Open full page"
+                >
+                  <i className="fa fa-external-link" /> Open
+                </button>
+                <button onClick={() => setPreviewVoucher(null)} className="btn-ghost p-1 rounded-lg">
+                  <i className="fa fa-times" />
+                </button>
+              </div>
+            </div>
+            <div className="modal-body" style={{ maxHeight: "75vh", overflowY: "auto" }}>
+              <VoucherPDF v={previewVoucher} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

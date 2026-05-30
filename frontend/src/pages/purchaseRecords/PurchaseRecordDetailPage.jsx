@@ -221,7 +221,7 @@ export default function PurchaseRecordDetailPage() {
 
       {/* Add Transaction Modal */}
       {addModal && (
-        <div className="modal-overlay" onClick={() => setAddModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="font-display font-semibold text-slate-800">Add Transaction</h2>
@@ -260,7 +260,7 @@ export default function PurchaseRecordDetailPage() {
 
       {/* PDF Date Range Modal */}
       {pdfModal && (
-        <div className="modal-overlay" onClick={() => setPdfModal(false)}>
+        <div className="modal-overlay">
           <div className="modal max-w-sm" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="font-display font-semibold text-slate-800">Generate PDF Report</h2>

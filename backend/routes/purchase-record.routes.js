@@ -2,6 +2,7 @@ import express from "express";
 import {
   getAllPurchaseRecords,
   getPurchaseRecordById,
+  getPurchaseRecordByDebtor,
   createOrAddToPurchaseRecord,
   addTransaction,
   updatePurchaseRecord,
@@ -14,6 +15,9 @@ const router = express.Router();
 // ─────────────────────────────────────────
 // Base Route: /api/purchaserecords
 // ─────────────────────────────────────────
+
+router.route("/by-debtor/:debtorName")
+  .get(getPurchaseRecordByDebtor); // GET /api/purchaserecords/by-debtor/:name
 
 router.route("/")
   .get(getAllPurchaseRecords)       // GET  /api/purchaserecords?search=abc

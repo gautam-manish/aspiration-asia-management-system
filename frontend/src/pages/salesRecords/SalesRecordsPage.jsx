@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { salesRecordAPI } from "../../api";
+import { salesRecordAPI, invoiceAPI } from "../../api";
 import { getError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
 import toast from "react-hot-toast";
@@ -20,7 +20,32 @@ function SalesModal({ onClose, onSaved }) {
   const [form, setForm]     = useState({ invoiceNumber: "", clientName: "", address: "", phone: "", email: "", totalAmount: "" });
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const lookupInvoice = async () => {
+    const num = (form.invoiceNumber || "").trim();
+    if (!num) { toast.error("Enter an invoice number first"); return; }
+    setLookingUp(true);
+    try {
+      const { data } = await invoiceAPI.getByNumber(num);
+      const inv = data.data;
+      setForm((f) => ({
+        ...f,
+        invoiceNumber: inv.invoiceNumber || num,
+        clientName:    inv.billTo?.name    || f.clientName,
+        address:       inv.billTo?.address || f.address,
+        phone:         inv.billTo?.mobile  || f.phone,
+        email:         inv.billTo?.email   || f.email,
+        totalAmount:   inv.total != null ? String(inv.total) : f.totalAmount,
+      }));
+      toast.success(`Invoice ${inv.invoiceNumber} loaded`);
+    } catch (err) {
+      toast.error(getError(err));
+    } finally {
+      setLookingUp(false);
+    }
+  };
 
   const addEntry    = () => setEntries((e) => [...e, { ...EMPTY_ENTRY }]);
   const removeEntry = (i) => setEntries((e) => e.filter((_, ii) => ii !== i));
@@ -46,7 +71,7 @@ function SalesModal({ onClose, onSaved }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal max-w-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="font-display font-semibold text-slate-800">New Sales Record</h2>
@@ -58,7 +83,23 @@ function SalesModal({ onClose, onSaved }) {
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Invoice Reference</p>
               <Field label="Invoice Number *">
-                <input className="input" value={form.invoiceNumber} onChange={(e) => set("invoiceNumber", e.target.value)} required />
+                <div className="flex gap-2">
+                  <input
+                    className="input flex-1"
+                    value={form.invoiceNumber}
+                    onChange={(e) => set("invoiceNumber", e.target.value)}
+                    placeholder="e.g. ASA47821396"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={lookupInvoice}
+                    disabled={lookingUp || !form.invoiceNumber.trim()}
+                    className="btn-secondary text-xs whitespace-nowrap"
+                  >
+                    {lookingUp ? "Fetching…" : <><i className="fa fa-search" /> Fetch</>}
+                  </button>
+                </div>
               </Field>
             </div>
 

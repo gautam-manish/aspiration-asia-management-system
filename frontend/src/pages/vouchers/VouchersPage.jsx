@@ -110,7 +110,7 @@ function VoucherModal({ onClose, onSaved }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal max-w-4xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="font-display font-semibold text-slate-800">New Voucher</h2>

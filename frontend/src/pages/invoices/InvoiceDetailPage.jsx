@@ -3,10 +3,11 @@ import { useParams, useNavigate } from "react-router-dom";
 import { invoiceAPI } from "../../api";
 import { getError, numberToWords } from "../../utils/helpers";
 import { PageLoader } from "../../components/common";
+import { InvoiceModal } from "./InvoicesPage";
 import toast from "react-hot-toast";
 
 // ─── Exact original invoice preview template ─────────────────────────────────
-function InvoicePrint({ inv }) {
+export function InvoicePrint({ inv }) {
   const cur = inv.currency || "Rs.";
 
   const fmt = (n) => Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -53,7 +54,7 @@ function InvoicePrint({ inv }) {
           </div>
           <div style={{ textAlign: "right", minWidth: 160 }}>
             <div style={{ fontWeight: "bold", fontSize: 20, color: "#1e293b", marginBottom: 4 }}>{inv.title || "Invoice"}</div>
-            <div style={{ fontSize: "0.92rem", fontWeight: 600, color: "#1e293b", marginBottom: 6 }}>{inv.invoiceNumber ? `#${inv.invoiceNumber}` : ""}</div>
+            <div style={{ fontSize: "0.92rem", fontWeight: 600, color: "#1e293b", marginBottom: 6 }}>{inv.invoiceNumber || ""}</div>
             <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Date:</span>
               <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{inv.invoiceDate || ""}</span>
@@ -143,7 +144,7 @@ function InvoicePrint({ inv }) {
                 Amount in Words
               </span>
               <div style={{ fontSize: "0.88rem", color: "#1e293b", fontWeight: 600, fontStyle: "italic", marginTop: 2 }}>
-                {inv.amountInWords || numberToWords(inv.total)}
+                {inv.amountInWords || numberToWords(inv.total, inv.currency)}
               </div>
             </div>
 
@@ -189,13 +190,15 @@ export default function InvoiceDetailPage() {
 
   const [inv,     setInv]     = useState(null);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
 
-  useEffect(() => {
+  const loadInvoice = () =>
     invoiceAPI.getById(id)
       .then(({ data }) => setInv(data.data))
       .catch((err) => toast.error(getError(err)))
       .finally(() => setLoading(false));
-  }, [id]);
+
+  useEffect(() => { loadInvoice(); }, [id]);
 
   // Same print mechanic as original
   const handlePrint = () => {
@@ -231,12 +234,17 @@ export default function InvoiceDetailPage() {
           </button>
           <div>
             <h1 className="page-title">{inv.title || "Invoice"}</h1>
-            <p className="page-subtitle font-mono text-brand-600">{inv.invoiceNumber ? `#${inv.invoiceNumber}` : ""}</p>
+            <p className="page-subtitle font-mono text-brand-600">{inv.invoiceNumber || ""}</p>
           </div>
         </div>
-        <button onClick={handlePrint} className="btn-primary">
-          <i className="fa fa-print" /> Print / PDF
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setEditing(true)} className="btn-secondary">
+            <i className="fa fa-edit" /> Edit Invoice
+          </button>
+          <button onClick={handlePrint} className="btn-primary">
+            <i className="fa fa-print" /> Print / PDF
+          </button>
+        </div>
       </div>
 
       {/* Screen preview — mirrors the exact print layout */}
@@ -257,7 +265,7 @@ export default function InvoiceDetailPage() {
               </div>
               <div className="text-right">
                 <p className="text-xl font-bold text-slate-800">{inv.title || "Invoice"}</p>
-                <p className="font-mono text-brand-600 font-semibold">{inv.invoiceNumber ? `#${inv.invoiceNumber}` : ""}</p>
+                <p className="font-mono text-brand-600 font-semibold">{inv.invoiceNumber || ""}</p>
                 <p className="text-sm text-slate-500">{inv.invoiceDate}</p>
               </div>
             </div>
@@ -340,7 +348,7 @@ export default function InvoiceDetailPage() {
             <div className="card-body space-y-3">
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                 <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Amount in Words</p>
-                <p className="text-sm font-semibold text-slate-800 italic">{inv.amountInWords || numberToWords(inv.total)}</p>
+                <p className="text-sm font-semibold text-slate-800 italic">{inv.amountInWords || numberToWords(inv.total, inv.currency)}</p>
               </div>
               {inv.notes && (
                 <div>
@@ -377,6 +385,14 @@ export default function InvoiceDetailPage() {
           <InvoicePrint inv={inv} />
         </div>
       </div>
+
+      {editing && (
+        <InvoiceModal
+          invoice={inv}
+          onClose={() => setEditing(false)}
+          onSaved={() => { setEditing(false); setLoading(true); loadInvoice(); }}
+        />
+      )}
     </div>
   );
 }

@@ -26,7 +26,7 @@ const ROOM_TYPES = ["Single Room","Double Room","DORM","Suite","Triple Room","Qu
 const MEAL_PLANS = ["EP","CP","MAP","AP","JP"];
 
 // ─── Exact original PDF template ─────────────────────────────────────────────
-function VoucherPDF({ v }) {
+export function VoucherPDF({ v }) {
   const totalPax =
     (Number(v.pax?.adults) || 0) +
     (Number(v.pax?.childWithBed) || 0) +
@@ -109,21 +109,34 @@ function VoucherPDF({ v }) {
         <ConfirmBanner />
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <tbody>
-            {v.bookingId ? (
-              <tr><td style={{ ...td, fontWeight: 600, width: "40%" }}>BOOKING ID</td><td style={{ ...td, fontWeight: 700 }}>{v.bookingId}</td></tr>
-            ) : null}
-            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600, width: "40%" }}>GUEST NAME</td><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 700 }}>{v.guestName}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>NATIONALITY</td><td style={v.bookingId ? td : tdB}>{v.nationality || "—"}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600 }}>CONTACT NUMBER</td><td style={v.bookingId ? tdB : td}>{v.contactNumber || "—"}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>MEAL INSTRUCTION</td><td style={v.bookingId ? td : tdB}>{v.mealInstruction || "—"}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600 }}>WHEEL CHAIR</td><td style={v.bookingId ? tdB : td}>{v.wheelChair || "—"}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>ARRIVAL FLIGHT DETAILS</td><td style={v.bookingId ? td : tdB}>{v.arrivalFlightDetails || "—"}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600 }}>PREFERRED FLOOR</td><td style={v.bookingId ? tdB : td}>{v.preferredFloor || "—"}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>TOTAL PAX</td><td style={v.bookingId ? td : tdB}>{totalPax}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600 }}>ADULTS</td><td style={v.bookingId ? tdB : td}>{v.pax?.adults || 0}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>CHILD WITH BED</td><td style={v.bookingId ? td : tdB}>{v.pax?.childWithBed || "—"}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? tdB : td), fontWeight: 600 }}>CHILD WITHOUT BED (6-10 YRS)</td><td style={v.bookingId ? tdB : td}>{v.pax?.childWithoutBed || "—"}</td></tr>
-            <tr><td style={{ ...(v.bookingId ? td : tdB), fontWeight: 600 }}>CHILD BELOW 5 YRS</td><td style={v.bookingId ? td : tdB}>{v.pax?.childBelow5 || "—"}</td></tr>
+            {(() => {
+              // Build the list of rows that actually have a value, then render with
+              // alternating row backgrounds based on visible index.
+              const rows = [];
+              if (v.bookingId)            rows.push({ label: "BOOKING ID",                value: v.bookingId,            bold: true });
+              if (v.guestName)            rows.push({ label: "GUEST NAME",                value: v.guestName,            bold: true });
+              if (v.nationality)          rows.push({ label: "NATIONALITY",               value: v.nationality });
+              if (v.contactNumber)        rows.push({ label: "CONTACT NUMBER",            value: v.contactNumber });
+              if (v.mealInstruction)      rows.push({ label: "MEAL INSTRUCTION",          value: v.mealInstruction });
+              if (v.wheelChair)           rows.push({ label: "WHEEL CHAIR",               value: v.wheelChair });
+              if (v.arrivalFlightDetails) rows.push({ label: "ARRIVAL FLIGHT DETAILS",    value: v.arrivalFlightDetails });
+              if (v.preferredFloor)       rows.push({ label: "PREFERRED FLOOR",           value: v.preferredFloor });
+              if (totalPax > 0)           rows.push({ label: "TOTAL PAX",                 value: totalPax });
+              if (Number(v.pax?.adults))          rows.push({ label: "ADULTS",                  value: v.pax.adults });
+              if (Number(v.pax?.childWithBed))    rows.push({ label: "CHILD WITH BED",          value: v.pax.childWithBed });
+              if (Number(v.pax?.childWithoutBed)) rows.push({ label: "CHILD WITHOUT BED (6-10 YRS)", value: v.pax.childWithoutBed });
+              if (Number(v.pax?.childBelow5))     rows.push({ label: "CHILD BELOW 5 YRS",       value: v.pax.childBelow5 });
+
+              return rows.map((r, idx) => {
+                const cell = idx % 2 === 0 ? td : tdB;
+                return (
+                  <tr key={r.label}>
+                    <td style={{ ...cell, fontWeight: 600, width: "40%" }}>{r.label}</td>
+                    <td style={{ ...cell, fontWeight: r.bold ? 700 : 400 }}>{r.value}</td>
+                  </tr>
+                );
+              });
+            })()}
           </tbody>
         </table>
       </div>
@@ -144,13 +157,7 @@ function VoucherPDF({ v }) {
             key={i}
             className="hotel-page"
             style={{
-              margin: "50px 0px",
-              pageBreakBefore: "always",
-              breakBefore: "page",
-              pageBreakAfter: "auto",
-              breakAfter: "auto",
-              pageBreakInside: "avoid",
-              breakInside: "avoid",
+              margin: "20px 0px",
               overflow: "hidden",
               background: "white",
               position: "relative",
@@ -158,8 +165,6 @@ function VoucherPDF({ v }) {
             }}
           >
             <div style={{ fontFamily: "Arial,sans-serif", color: "#000", padding: 20 }}>
-              <CompanyHeader />
-              <ConfirmBanner />
               <div style={{
                 background: "#2563eb",
                 color: "white",
@@ -167,7 +172,7 @@ function VoucherPDF({ v }) {
                 padding: 8,
                 fontWeight: "bold",
                 fontSize: 14,
-                marginTop: 20,
+                marginTop: 0,
                 WebkitPrintColorAdjust: "exact",
                 printColorAdjust: "exact",
               }}>
@@ -176,9 +181,6 @@ function VoucherPDF({ v }) {
 
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <tbody>
-                  <tr><td style={{ ...td, fontWeight: 600, width: "40%" }}>CONFIRMATION NUMBER</td><td style={{ ...td, fontWeight: "bold" }}>{h.confirmationNumber || ""}</td></tr>
-                  <tr><td style={{ ...tdB, fontWeight: 600 }}>HOTEL NAME</td><td style={tdB}>{h.hotelName || ""}</td></tr>
-                  <tr><td style={{ ...td, fontWeight: 600 }}>CITY / COUNTRY</td><td style={td}>{h.hotelCity ? `${h.hotelCity}, ${h.hotelCountry}` : "—"}</td></tr>
                   {(() => {
                     const totalRooms = rooms.reduce((sum, r) => sum + (Number(r.noOfRooms) || 0), 0);
                     const allocations = rooms
@@ -190,43 +192,65 @@ function VoucherPDF({ v }) {
                         const right = [cat, type].filter(Boolean).join(", ");
                         return [count, right].filter(Boolean).join(" ");
                       });
-                    return (
-                      <Fragment>
-                        <tr>
-                          <td style={{ ...tdB, fontWeight: 600 }}>NO. OF ROOMS</td>
-                          <td style={tdB}>{totalRooms || h.noOfRooms || ""}</td>
-                        </tr>
-                        <tr>
-                          <td style={{ ...td, fontWeight: 600 }}>ROOM ALLOCATIONS</td>
-                          <td style={td}>
-                            {allocations.length > 0
-                              ? allocations.map((line, idx) => (
-                                  <Fragment key={idx}>
-                                    {line}
-                                    {idx < allocations.length - 1 ? <br /> : null}
-                                  </Fragment>
-                                ))
-                              : (h.roomCategory || h.roomType
-                                  ? [h.roomCategory, h.roomType].filter(Boolean).join(", ")
-                                  : "—")}
+
+                    const visit1 = h.visit1in && h.visit1in !== "N/A" ? `${h.visit1in} → ${h.visit1out || "N/A"}` : "";
+                    const visit2 = h.visit2in && h.visit2in !== "N/A" ? `${h.visit2in} → ${h.visit2out || "N/A"}` : "";
+
+                    const rowDefs = [];
+                    if (h.confirmationNumber) rowDefs.push({ label: "CONFIRMATION NUMBER", node: h.confirmationNumber, bold: true });
+                    if (h.hotelName)          rowDefs.push({ label: "HOTEL NAME",          node: h.hotelName });
+                    if (h.hotelCity || h.hotelCountry) {
+                      rowDefs.push({
+                        label: "CITY / COUNTRY",
+                        node: [h.hotelCity, h.hotelCountry].filter(Boolean).join(", "),
+                      });
+                    }
+                    if (totalRooms || h.noOfRooms) {
+                      rowDefs.push({ label: "NO. OF ROOMS", node: totalRooms || h.noOfRooms });
+                    }
+                    if (allocations.length > 0 || h.roomCategory || h.roomType) {
+                      rowDefs.push({
+                        label: "ROOM ALLOCATIONS",
+                        node: allocations.length > 0
+                          ? allocations.map((line, idx) => (
+                              <Fragment key={idx}>
+                                {line}
+                                {idx < allocations.length - 1 ? <br /> : null}
+                              </Fragment>
+                            ))
+                          : [h.roomCategory, h.roomType].filter(Boolean).join(", "),
+                      });
+                    }
+                    if (h.mealPlan)            rowDefs.push({ label: "MEAL PLAN",     node: h.mealPlan });
+                    if (h.hotelContactNumber)  rowDefs.push({ label: "HOTEL CONTACT", node: h.hotelContactNumber });
+                    if (h.googleMapsLink)      rowDefs.push({ label: "GOOGLE MAPS",   node: mapsCell });
+                    if (visit1) {
+                      rowDefs.push({
+                        label: "1ST VISIT",
+                        node: <><strong>Check-In:</strong> {h.visit1in}<br /><strong>Check-Out:</strong> {h.visit1out || "N/A"}</>,
+                      });
+                    }
+                    if (visit2) {
+                      rowDefs.push({
+                        label: "2ND VISIT",
+                        node: <><strong>Check-In:</strong> {h.visit2in}<br /><strong>Check-Out:</strong> {h.visit2out || "N/A"}</>,
+                      });
+                    }
+                    if (h.includes) rowDefs.push({ label: "INCLUDES", node: h.includes });
+                    rowDefs.push({ label: "EMERGENCY NUMBER", node: "+977 982-7621738", emergency: true });
+
+                    return rowDefs.map((r, idx) => {
+                      const cell = idx % 2 === 0 ? td : tdB;
+                      return (
+                        <tr key={r.label}>
+                          <td style={{ ...cell, fontWeight: 600, width: "40%" }}>{r.label}</td>
+                          <td style={{ ...cell, ...(r.bold ? { fontWeight: "bold" } : {}), ...(r.emergency ? { fontWeight: 600, color: "#dc2626" } : {}) }}>
+                            {r.node}
                           </td>
                         </tr>
-                      </Fragment>
-                    );
+                      );
+                    });
                   })()}
-                  <tr><td style={{ ...tdB, fontWeight: 600 }}>MEAL PLAN</td><td style={tdB}>{h.mealPlan || ""}</td></tr>
-                  <tr><td style={{ ...tdB, fontWeight: 600 }}>HOTEL CONTACT</td><td style={tdB}>{h.hotelContactNumber || "—"}</td></tr>
-                  <tr><td style={{ ...td, fontWeight: 600 }}>GOOGLE MAPS</td><td style={td}>{mapsCell}</td></tr>
-                  <tr>
-                    <td style={{ ...tdB, fontWeight: 600 }}>1ST VISIT</td>
-                    <td style={tdB}><strong>Check-In:</strong> {h.visit1in || "N/A"}<br /><strong>Check-Out:</strong> {h.visit1out || "N/A"}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ ...td, fontWeight: 600 }}>2ND VISIT</td>
-                    <td style={td}><strong>Check-In:</strong> {h.visit2in || "N/A"}<br /><strong>Check-Out:</strong> {h.visit2out || "N/A"}</td>
-                  </tr>
-                  <tr><td style={{ ...tdB, fontWeight: 600 }}>INCLUDES</td><td style={tdB}>{h.includes || "—"}</td></tr>
-                  <tr><td style={{ ...td, fontWeight: 600 }}>EMERGENCY NUMBER</td><td style={{ ...td, fontWeight: 600, color: "#dc2626" }}>+977 982-7621738</td></tr>
                 </tbody>
               </table>
 
@@ -382,7 +406,7 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal max-w-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="font-display font-semibold text-slate-800">Edit Voucher</h2>
@@ -570,15 +594,10 @@ export default function VoucherDetailPage() {
       <title>Voucher — ${voucher?.guestName}</title>
       <style>
         @page { size: auto; margin: 8mm; }
-        html, body { margin:0; padding:0; overflow:hidden; }
+        html, body { margin:0; padding:0; }
         body { font-family: Arial, sans-serif; }
         table, tr, td, th { border: 1px solid rgb(109,152,187); }
-        .hotel-page {
-          page-break-before: always; break-before: page;
-          page-break-inside: avoid; break-inside: avoid;
-          overflow: hidden; background: white;
-        }
-        .hotel-page:first-child { page-break-before: auto !important; break-before: auto !important; }
+        .hotel-page { background: white; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       </style>
     </head><body>${printContents}</body></html>`);

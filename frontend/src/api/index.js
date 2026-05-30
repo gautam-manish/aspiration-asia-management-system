@@ -37,19 +37,23 @@ export const reservationAPI = {
 
 // ── Vouchers ────────────────────────────────────────────────────────
 export const voucherAPI = {
-  getAll:  (params)   => api.get("/vouchers", { params }),
-  getById: (id)       => api.get(`/vouchers/${id}`),
-  create:  (data)     => api.post("/vouchers", data),
-  update:  (id, data) => api.put(`/vouchers/${id}`, data),
+  getAll:         (params)   => api.get("/vouchers", { params }),
+  getById:        (id)       => api.get(`/vouchers/${id}`),
+  getByBookingId: (bid)      => api.get(`/vouchers/by-booking/${bid}`),
+  create:         (data)     => api.post("/vouchers", data),
+  update:         (id, data) => api.put(`/vouchers/${id}`, data),
 };
 
 // ── Invoices ────────────────────────────────────────────────────────
 export const invoiceAPI = {
-  getAll:  (params)   => api.get("/invoices", { params }),
-  getById: (id)       => api.get(`/invoices/${id}`),
-  create:  (data)     => api.post("/invoices", data),
-  update:  (id, data) => api.put(`/invoices/${id}`, data),
-  remove:  (id)       => api.delete(`/invoices/${id}`),
+  getAll:         (params)   => api.get("/invoices", { params }),
+  getById:        (id)       => api.get(`/invoices/${id}`),
+  getByBookingId: (bid)      => api.get(`/invoices/by-booking/${bid}`),
+  getByNumber:    (num)      => api.get(`/invoices/by-number/${num}`),
+  getNextNumber:  ()         => api.get("/invoices/next-number"),
+  create:         (data)     => api.post("/invoices", data),
+  update:         (id, data) => api.put(`/invoices/${id}`, data),
+  remove:         (id)       => api.delete(`/invoices/${id}`),
 };
 
 // ── Cash Receipts ───────────────────────────────────────────────────
@@ -104,6 +108,7 @@ export const salesRecordAPI = {
 export const purchaseRecordAPI = {
   getAll:          (params)   => api.get("/purchaserecords", { params }),
   getById:         (id)       => api.get(`/purchaserecords/${id}`),
+  getByDebtor:     (name)     => api.get(`/purchaserecords/by-debtor/${encodeURIComponent(name)}`),
   create:          (data)     => api.post("/purchaserecords", data),
   update:          (id, data) => api.put(`/purchaserecords/${id}`, data),
   remove:          (id)       => api.delete(`/purchaserecords/${id}`),

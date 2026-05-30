@@ -151,7 +151,7 @@ export default function SalesRecordDetailPage() {
 
       {/* Edit Modal */}
       {editing && (
-        <div className="modal-overlay" onClick={() => setEditing(false)}>
+        <div className="modal-overlay">
           <div className="modal max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="font-display font-semibold text-slate-800">Edit Sales Record</h2>

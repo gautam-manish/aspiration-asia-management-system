@@ -39,7 +39,7 @@ function CashReceiptModal({ onClose, onSaved }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="font-display font-semibold text-slate-800">New Cash Receipt</h2>
@@ -165,7 +165,6 @@ export default function CashReceiptsPage() {
                   <th>Date</th>
                   <th>Received From</th>
                   <th>Amount</th>
-                  <th>Payment Type</th>
                   <th>Ref / Cheque</th>
                   <th className="text-right">Actions</th>
                 </tr>
@@ -177,7 +176,6 @@ export default function CashReceiptsPage() {
                     <td className="text-slate-500 text-sm">{r.date || formatDate(r.createdAt)}</td>
                     <td className="font-medium text-slate-800">{r.name}</td>
                     <td className="font-semibold text-slate-800">Rs. {Number(r.amount).toLocaleString("en-IN")}</td>
-                    <td><span className="badge badge-blue">{r.paymentType}</span></td>
                     <td className="text-slate-500 text-sm">{r.cashChequeNo || "—"}</td>
                     <td>
                       <div className="flex justify-end gap-1">

@@ -8,7 +8,7 @@ const lineItemSchema = new mongoose.Schema(
       required: [true, "Line item description is required"],
     },
     details: { type: String, trim: true },
-    qty: { type: Number, default: 1, min: [1, "Qty must be at least 1"] },
+    qty: { type: Number, default: 1, min: [0, "Qty cannot be negative"] },
     rate: { type: Number, default: 0, min: [0, "Rate cannot be negative"] },
     amount: { type: Number, default: 0 },
   },
@@ -21,12 +21,16 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
       trim: true,
       required: [true, "Invoice number is required"],
+      unique: true,
+      index: true,
     },
     invoiceDate: {
       type: String,
       trim: true,
       required: [true, "Invoice date is required"],
     },
+
+    bookingId: { type: String, trim: true, default: "" },
 
     from: {
       name: { type: String, trim: true },

@@ -14,8 +14,11 @@ function AddModal({ onClose, onSaved }) {
   const [showDrop, setShowDrop] = useState(false);
   const [txn,      setTxn]      = useState({ date: "", refNo: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
   const [opening,  setOpening]  = useState("");
-  const [fiscal,   setFiscal]   = useState("");
   const [loading,  setLoading]  = useState(false);
+  // Holds the existing PurchaseRecord doc when one is found for the typed debtor.
+  // null = unknown, false = no existing account (new ledger), object = existing.
+  const [existing, setExisting] = useState(null);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     sundryAPI.getAll().then(({ data }) => setDebtors(data.data || [])).catch(() => {});
@@ -26,33 +29,61 @@ function AddModal({ onClose, onSaved }) {
     (d.companyName || "").toLowerCase().includes(query.toLowerCase())
   );
 
+  // Look up an existing ledger by debtor name. Debounced lightly via blur/select.
+  const checkExistingByName = async (name) => {
+    const trimmed = (name || "").trim();
+    if (!trimmed) { setExisting(null); return; }
+    setChecking(true);
+    try {
+      const { data } = await purchaseRecordAPI.getByDebtor(trimmed);
+      setExisting(data?.data || null);
+      // Clear the opening balance input since it isn't applicable.
+      if (data?.data) { setOpening(""); }
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        setExisting(false); // confirmed no account → show opening balance fields
+      } else {
+        setExisting(null);
+      }
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const selectDebtor = (d) => {
     setSelected(d);
     setQuery(d.contactPerson + (d.companyName ? ` (${d.companyName})` : ""));
     setShowDrop(false);
+    // The query string includes the company suffix; check by the contact person name only.
+    checkExistingByName(d.contactPerson);
   };
 
   const setT = (k, v) => setTxn((t) => ({ ...t, [k]: v }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selected && !query.trim()) { toast.error("Select or enter a debtor name"); return; }
+    const debtorNameClean = selected
+      ? selected.contactPerson
+      : query.replace(/\s*\(.*\)\s*$/, "").trim();
+    if (!debtorNameClean) { toast.error("Select or enter a debtor name"); return; }
     if (!txn.date)   { toast.error("Transaction date required"); return; }
     if (!txn.amount || Number(txn.amount) <= 0) { toast.error("Amount must be > 0"); return; }
     setLoading(true);
     try {
       await purchaseRecordAPI.create({
-        debtorName:    selected ? selected.contactPerson : query.trim(),
-        debtorCompany: selected?.companyName  || "",
-        debtorPan:     selected?.panVatGst    || "",
-        debtorAddress: selected?.address      || "",
-        debtorPhone:   selected?.phone        || "",
-        debtorEmail:   selected?.email        || "",
-        openingBalance: Number(opening) || 0,
-        fiscalYear:    fiscal,
+        debtorName:    debtorNameClean,
+        debtorCompany: selected?.companyName  || existing?.debtorCompany || "",
+        debtorPan:     selected?.panVatGst    || existing?.debtorPan     || "",
+        debtorAddress: selected?.address      || existing?.debtorAddress || "",
+        debtorPhone:   selected?.phone        || existing?.debtorPhone   || "",
+        debtorEmail:   selected?.email        || existing?.debtorEmail   || "",
+        // For new ledgers, send opening. For existing ledgers, omit it
+        // so the controller doesn't try to override (controller only honors it on create anyway).
+        ...(existing ? {} : { openingBalance: Number(opening) || 0 }),
         transaction:   { ...txn, amount: Number(txn.amount) },
       });
-      toast.success("Purchase entry saved ✓");
+      toast.success(existing ? "Entry added to existing ledger ✓" : "New ledger created ✓");
       onSaved();
     } catch (err) {
       toast.error(getError(err));
@@ -62,7 +93,7 @@ function AddModal({ onClose, onSaved }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal max-w-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="font-display font-semibold text-slate-800">Add Purchase Entry</h2>
@@ -78,8 +109,23 @@ function AddModal({ onClose, onSaved }) {
                   className="input"
                   placeholder="Search or type debtor name…"
                   value={query}
-                  onChange={(e) => { setQuery(e.target.value); setShowDrop(true); setSelected(null); }}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setShowDrop(true);
+                    setSelected(null);
+                    setExisting(null); // reset until blur or selection
+                  }}
                   onFocus={() => setShowDrop(true)}
+                  onBlur={() => {
+                    // Allow click on dropdown options to register before checking.
+                    setTimeout(() => {
+                      // Strip any trailing "(Company)" suffix when typed manually
+                      const cleanName = selected
+                        ? selected.contactPerson
+                        : query.replace(/\s*\(.*\)\s*$/, "");
+                      checkExistingByName(cleanName);
+                    }, 150);
+                  }}
                 />
                 {showDrop && filtered.length > 0 && (
                   <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
@@ -93,14 +139,46 @@ function AddModal({ onClose, onSaved }) {
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3 mt-3">
-                <Field label="Opening Balance (Rs.)">
-                  <input className="input" type="number" min="0" value={opening} onChange={(e) => setOpening(e.target.value)} />
-                </Field>
-                <Field label="Fiscal Year">
-                  <input className="input" value={fiscal} onChange={(e) => setFiscal(e.target.value)} placeholder="e.g. 2082/2083" />
-                </Field>
-              </div>
+
+              {/* Existing-account banner (shown when a ledger already exists) */}
+              {existing && (
+                <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-brand-700 flex items-start gap-2">
+                  <i className="fa fa-info-circle mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Existing ledger found</p>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      This entry will be appended to <span className="font-medium">{existing.debtorName}</span>'s account.
+                      Opening balance is locked at <span className="font-mono">{fmt(existing.openingBalance)}</span>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* No-account banner (shown after lookup confirms no ledger exists) */}
+              {existing === false && (
+                <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
+                  <i className="fa fa-exclamation-circle mt-0.5" />
+                  <div>
+                    <p className="font-semibold">No account exists for this debtor</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      A new ledger will be created on save. Set the opening balance below.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {checking && (
+                <p className="mt-2 text-xs text-slate-400">Checking existing account…</p>
+              )}
+
+              {/* Opening balance — only when no existing account yet */}
+              {!existing && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <Field label="Opening Balance (Rs.)">
+                    <input className="input" type="number" min="0" step="any" value={opening} onChange={(e) => setOpening(e.target.value)} />
+                  </Field>
+                </div>
+              )}
             </div>
 
             {/* Transaction */}

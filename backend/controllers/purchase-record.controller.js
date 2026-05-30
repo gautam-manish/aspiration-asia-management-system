@@ -50,6 +50,31 @@ export const getAllPurchaseRecords = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────
+// GET RECORD BY DEBTOR NAME (case-insensitive exact match)
+// GET /api/purchaserecords/by-debtor/:debtorName
+// Used by the frontend to detect whether an account already exists
+// before submitting a new purchase entry.
+// ─────────────────────────────────────────────
+export const getPurchaseRecordByDebtor = async (req, res) => {
+  try {
+    const debtorName = decodeURIComponent(req.params.debtorName || "").trim();
+    if (!debtorName) {
+      return res.status(400).json({ success: false, message: "Debtor name is required." });
+    }
+    const record = await PurchaseRecord.findOne({
+      debtorName: { $regex: `^${debtorName.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}$`, $options: "i" },
+    });
+    if (!record) {
+      return res.status(404).json({ success: false, message: "No purchase record for this debtor." });
+    }
+    return res.status(200).json({ success: true, data: record });
+  } catch (error) {
+    console.error("getPurchaseRecordByDebtor error:", error);
+    return res.status(500).json({ success: false, message: "Failed to look up record." });
+  }
+};
+
+// ─────────────────────────────────────────────
 // GET SINGLE RECORD
 // GET /api/purchaserecords/:id
 // ─────────────────────────────────────────────

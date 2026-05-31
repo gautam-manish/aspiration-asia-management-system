@@ -6,6 +6,7 @@ import LoginPage               from "./pages/auth/LoginPage";
 import HotelsPage              from "./pages/hotels/HotelsPage";
 import BookingsPage            from "./pages/bookings/BookingsPage";
 import BookingDetailPage       from "./pages/bookings/BookingDetailPage";
+import UpcomingArrivalsPage    from "./pages/upcomingArrivals/UpcomingArrivalsPage";
 import ReservationsPage        from "./pages/reservations/ReservationsPage";
 import VouchersPage            from "./pages/vouchers/VouchersPage";
 import VoucherDetailPage       from "./pages/vouchers/VoucherDetailPage";
@@ -32,9 +33,10 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 
-        <Route path="/"                          element={<P><HotelsPage /></P>} />
+        <Route path="/hotels"                    element={<P><HotelsPage /></P>} />
         <Route path="/bookings"                  element={<P><BookingsPage /></P>} />
         <Route path="/bookings/:id"              element={<P><BookingDetailPage /></P>} />
+        <Route path="/"                          element={<P><UpcomingArrivalsPage /></P>} />
         <Route path="/reservations"              element={<P><ReservationsPage /></P>} />
         <Route path="/vouchers"                  element={<P><VouchersPage /></P>} />
         <Route path="/vouchers/:id"              element={<P><VoucherDetailPage /></P>} />

@@ -8,11 +8,12 @@ const NAV_GROUPS = [
   {
     label: "Operations",
     items: [
-      { to: "/",              icon: "fa-hotel",          label: "Hotels" },
-      { to: "/bookings",      icon: "fa-bookmark",       label: "Bookings" },
-      { to: "/reservations",  icon: "fa-calendar-check", label: "Reservations" },
-      { to: "/vouchers",      icon: "fa-ticket-alt",     label: "Vouchers" },
-      { to: "/package-cost",  icon: "fa-box-open",       label: "Package Cost" },
+      { to: "/hotels",             icon: "fa-hotel",          label: "Hotels" },
+      { to: "/bookings",          icon: "fa-bookmark",       label: "Bookings" },
+      { to: "/",                  icon: "fa-plane-arrival",  label: "Upcoming Arrivals" },
+      { to: "/reservations",      icon: "fa-calendar-check", label: "Reservations" },
+      { to: "/vouchers",          icon: "fa-ticket-alt",     label: "Vouchers" },
+      { to: "/package-cost",      icon: "fa-box-open",       label: "Package Cost" },
     ],
   },
   {

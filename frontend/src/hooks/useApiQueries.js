@@ -9,7 +9,6 @@ import {
   invoiceAPI,
   cashReceiptAPI,
   calculatorAPI,
-  clientAPI,
   sundryAPI,
   salesRecordAPI,
   purchaseRecordAPI,
@@ -316,23 +315,6 @@ export function useCalculatorMutations() {
     create: useMutation({ mutationFn: (data) => calculatorAPI.create(data), onSuccess: invalidate }),
     update: useMutation({ mutationFn: ({ id, data }) => calculatorAPI.update(id, data), onSuccess: invalidate }),
     remove: useMutation({ mutationFn: (id) => calculatorAPI.remove(id), onSuccess: invalidate }),
-  };
-}
-
-// ── Clients (ledger) ────────────────────────────────────────────────────────
-export function useClients() {
-  return useQuery({
-    queryKey: ["clients"],
-    queryFn: () => clientAPI.getAll().then((r) => r.data?.data ?? []),
-  });
-}
-
-export function useClientMutations() {
-  const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["clients"] });
-  return {
-    create: useMutation({ mutationFn: (data) => clientAPI.create(data), onSuccess: invalidate }),
-    remove: useMutation({ mutationFn: (id) => clientAPI.remove(id), onSuccess: invalidate }),
   };
 }
 

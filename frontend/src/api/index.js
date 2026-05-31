@@ -73,13 +73,6 @@ export const calculatorAPI = {
   remove:  (id)         => api.delete(`/calculator/${id}`),
 };
 
-// ── Clients ─────────────────────────────────────────────────────────
-export const clientAPI = {
-  getAll: ()     => api.get("/clients"),
-  create: (data) => api.post("/clients", data),
-  remove: (id)   => api.delete(`/clients/${id}`),
-};
-
 // ── Email ───────────────────────────────────────────────────────────
 export const emailAPI = {
   sendPackageMail:    (data) => api.post("/mail/send-mail", data),

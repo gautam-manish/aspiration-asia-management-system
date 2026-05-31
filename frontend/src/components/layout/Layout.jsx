@@ -29,7 +29,6 @@ const NAV_GROUPS = [
     label: "Contacts",
     items: [
       { to: "/sundry", icon: "fa-building", label: "Sundry" },
-      { to: "/ledger", icon: "fa-address-book", label: "Client Ledger" },
     ],
   },
 ];

@@ -14,7 +14,6 @@ import InvoiceDetailPage       from "./pages/invoices/InvoiceDetailPage";
 import CashReceiptsPage        from "./pages/cashReceipts/CashReceiptsPage";
 import CashReceiptDetailPage   from "./pages/cashReceipts/CashReceiptDetailPage";
 import CalculatorPage          from "./pages/calculator/CalculatorPage";
-import LedgerPage              from "./pages/ledger/LedgerPage";
 import SundryPage              from "./pages/sundry/SundryPage";
 import SundryDetailPage        from "./pages/sundry/SundryDetailPage";
 import SalesRecordsPage        from "./pages/salesRecords/SalesRecordsPage";
@@ -44,7 +43,6 @@ export default function App() {
         <Route path="/cash-receipts"             element={<P><CashReceiptsPage /></P>} />
         <Route path="/cash-receipts/:id"         element={<P><CashReceiptDetailPage /></P>} />
         <Route path="/calculator"                element={<P><CalculatorPage /></P>} />
-        <Route path="/ledger"                    element={<P><LedgerPage /></P>} />
         <Route path="/sundry"                    element={<P><SundryPage /></P>} />
         <Route path="/sundry/:id"                element={<P><SundryDetailPage /></P>} />
         <Route path="/sales-records"             element={<P><SalesRecordsPage /></P>} />

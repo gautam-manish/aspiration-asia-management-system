@@ -106,7 +106,7 @@ export function VoucherPDF({ v }) {
     <div style={{ width: "100%", margin: 0, background: "white", padding: "6px 10px", boxSizing: "border-box", fontFamily: "Arial,sans-serif", color: "#000" }}>
 
       {/* PAGE 1 — Client info */}
-      <div style={{ fontFamily: "Arial,sans-serif", color: "#000", marginBottom: 40 }}>
+      <div style={{ fontFamily: "Arial,sans-serif", color: "#000", marginBottom: 40, padding: 20 }}>
         <CompanyHeader />
         <ConfirmBanner />
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>

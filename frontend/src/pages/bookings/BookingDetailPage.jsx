@@ -30,6 +30,16 @@ function InfoPill({ label, value }) {
 
 const EMPTY_ITEM = { title: "", description: "" };
 
+// Compute the date for "Day N" of the trip, given the booking's arrival date.
+// Day 1 = arrival day. Returns "" if no arrival date is set.
+function dayDateLabel(arrivalDate, dayIndex /* 0-based */) {
+  if (!arrivalDate) return "";
+  const d = new Date(arrivalDate);
+  if (isNaN(d)) return "";
+  d.setDate(d.getDate() + dayIndex);
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+}
+
 /* ── Printable Itinerary Document ───────────────────────────────── */
 function PrintableItinerary({ booking, printRef }) {
   const paxParts = [
@@ -43,14 +53,22 @@ function PrintableItinerary({ booking, printRef }) {
     <div ref={printRef}>
       <style>{`
         @media print {
-          @page { margin: 20mm 18mm; size: A4; }
+          /* Uniform margins on every page so it always looks professional,
+             regardless of the user's margin choice in the print dialog. */
+          @page { size: A4; margin: 18mm 12mm; }
+          /* First page gets a slightly tighter top margin */
+          @page :first { margin-top: 10mm; }
+          html, body { margin: 0 !important; padding: 0 !important; }
         }
         .pi-wrap {
+          /* On-screen padding so the off-screen render also looks right.
+             Smaller top to mirror the first-page print behaviour. */
+          padding: 10mm 12mm 18mm 12mm;
+          box-sizing: border-box;
           font-family: Arial, sans-serif;
           font-size: 16px;
           color: #000;
           background: #fff;
-          padding: 0;
           line-height: 1.65;
         }
         .pi-summary {
@@ -150,7 +168,10 @@ function PrintableItinerary({ booking, printRef }) {
           return (
             <div key={i} className="pi-item">
               <div className="pi-item-title">
-                Day {i + 1}{item.title ? `: ${item.title}` : ""}
+                Day {i + 1}{(() => {
+                  const dateStr = dayDateLabel(booking.arrivalDate, i);
+                  return dateStr ? ` (${dateStr})` : "";
+                })()}{item.title ? `: ${item.title}` : ""}
               </div>
               {lines.length > 1 ? (
                 <ul >
@@ -165,6 +186,28 @@ function PrintableItinerary({ booking, printRef }) {
           );
         })}
 
+        {/* Includes / Excludes (rendered only when set, plain black & white) */}
+        {(booking.itineraryIncludes || booking.itineraryExcludes) && (
+          <div style={{ marginTop: 28, paddingTop: 18, borderTop: "1px solid #000" }}>
+            {booking.itineraryIncludes && (
+              <div style={{ marginBottom: booking.itineraryExcludes ? 18 : 0 }}>
+                <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#000", marginBottom: 6 }}>
+                  Includes
+                </div>
+                <p className="pi-item-desc">{booking.itineraryIncludes}</p>
+              </div>
+            )}
+            {booking.itineraryExcludes && (
+              <div>
+                <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#000", marginBottom: 6 }}>
+                  Excludes
+                </div>
+                <p className="pi-item-desc">{booking.itineraryExcludes}</p>
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
     </div>
   );
@@ -176,6 +219,8 @@ function ItineraryModal({ booking, onClose, onSaved }) {
       ? booking.itinerary.map((i) => ({ ...i }))
       : [{ ...EMPTY_ITEM }]
   );
+  const [includesText, setIncludesText] = useState(booking.itineraryIncludes || "");
+  const [excludesText, setExcludesText] = useState(booking.itineraryExcludes || "");
   const [saving, setSaving] = useState(false);
 
   const addItem    = () => setItems((prev) => [...prev, { ...EMPTY_ITEM }]);
@@ -186,7 +231,11 @@ function ItineraryModal({ booking, onClose, onSaved }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await bookingAPI.saveItinerary(booking._id, { itinerary: items });
+      await bookingAPI.saveItinerary(booking._id, {
+        itinerary: items,
+        itineraryIncludes: includesText,
+        itineraryExcludes: excludesText,
+      });
       toast.success("Itinerary saved");
       onSaved();
     } catch (err) {
@@ -238,40 +287,45 @@ function ItineraryModal({ booking, onClose, onSaved }) {
           </div>
 
           <div className="space-y-3">
-            {items.map((item, index) => (
-              <div key={index} className="border border-slate-200 rounded-lg p-3 space-y-2">
-                {items.length > 1 && (
+            {items.map((item, index) => {
+              const dateStr = dayDateLabel(booking.arrivalDate, index);
+              return (
+                <div key={index} className="border border-slate-200 rounded-lg p-3 space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-400 font-medium">Day {index + 1}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeItem(index)}
-                      className="btn-ghost text-red-400 hover:text-red-600 text-xs p-1"
-                    >
-                      <i className="fa fa-trash-o" />
-                    </button>
+                    <span className="text-xs text-slate-500 font-semibold">
+                      Day {index + 1}{dateStr ? <span className="text-slate-400 font-normal"> · {dateStr}</span> : null}
+                    </span>
+                    {items.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeItem(index)}
+                        className="btn-ghost text-red-400 hover:text-red-600 text-xs p-1"
+                      >
+                        <i className="fa fa-trash-o" />
+                      </button>
+                    )}
                   </div>
-                )}
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Title</label>
-                  <input
-                    className="input"
-                    placeholder={`e.g. Day ${index + 1} – Arrival in Kathmandu`}
-                    value={item.title}
-                    onChange={(e) => updateItem(index, "title", e.target.value)}
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Title</label>
+                    <input
+                      className="input"
+                      placeholder={`e.g. Day ${index + 1} – Arrival in Kathmandu`}
+                      value={item.title}
+                      onChange={(e) => updateItem(index, "title", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                    <textarea
+                      className="input min-h-[80px] resize-y"
+                      placeholder="Describe the day's activities…"
+                      value={item.description}
+                      onChange={(e) => updateItem(index, "description", e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
-                  <textarea
-                    className="input min-h-[80px] resize-y"
-                    placeholder="Describe the day's activities…"
-                    value={item.description}
-                    onChange={(e) => updateItem(index, "description", e.target.value)}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <button
@@ -281,6 +335,27 @@ function ItineraryModal({ booking, onClose, onSaved }) {
           >
             <i className="fa fa-plus text-xs" /> Add another day
           </button>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Includes</label>
+              <textarea
+                className="input min-h-[110px] resize-y"
+                placeholder={"e.g.\n• Airport pickup & drop\n• Twin sharing accommodation\n• Daily breakfast"}
+                value={includesText}
+                onChange={(e) => setIncludesText(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Excludes</label>
+              <textarea
+                className="input min-h-[110px] resize-y"
+                placeholder={"e.g.\n• International flights\n• Personal expenses\n• Travel insurance"}
+                value={excludesText}
+                onChange={(e) => setExcludesText(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="modal-footer">
@@ -356,20 +431,43 @@ function ViewItineraryModal({ booking, onClose, onEdit }) {
             </div>
 
             <div className="space-y-3">
-              {(booking.itinerary || []).map((item, i) => (
-                <div key={i} className="border border-slate-100 rounded-lg p-3 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
-                      DAY {i + 1}
-                    </span>
-                    <p className="text-sm font-medium text-slate-800">{item.title || `Day ${i + 1}`}</p>
+              {(booking.itinerary || []).map((item, i) => {
+                const dateStr = dayDateLabel(booking.arrivalDate, i);
+                return (
+                  <div key={i} className="border border-slate-100 rounded-lg p-3 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
+                        DAY {i + 1}
+                      </span>
+                      {dateStr && (
+                        <span className="text-xs text-slate-500">{dateStr}</span>
+                      )}
+                      <p className="text-sm font-medium text-slate-800">{item.title || `Day ${i + 1}`}</p>
+                    </div>
+                    {item.description && (
+                      <p className="text-sm text-slate-500 whitespace-pre-line pl-1">{item.description}</p>
+                    )}
                   </div>
-                  {item.description && (
-                    <p className="text-sm text-slate-500 whitespace-pre-line pl-1">{item.description}</p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
+
+            {(booking.itineraryIncludes || booking.itineraryExcludes) && (
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                {booking.itineraryIncludes && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider mb-1">Includes</p>
+                    <p className="text-sm text-slate-700 whitespace-pre-line">{booking.itineraryIncludes}</p>
+                  </div>
+                )}
+                {booking.itineraryExcludes && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-slate-700 uppercase tracking-wider mb-1">Excludes</p>
+                    <p className="text-sm text-slate-700 whitespace-pre-line">{booking.itineraryExcludes}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="modal-footer">

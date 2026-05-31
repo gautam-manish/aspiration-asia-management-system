@@ -4,9 +4,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { salesRecordAPI, invoiceAPI } from "../../api";
 import { notifyError } from "../../utils/helpers";
 import { compressImageIfPossible } from "../../utils/compressImage";
-import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
+import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useSalesRecords, useSalesRecordMutations } from "../../hooks/useApiQueries";
+import { useSalesRecordsPaginated, useSalesRecordMutations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -298,14 +298,20 @@ export default function SalesRecordsPage() {
   const navigate              = useNavigate();
   const qc                    = useQueryClient();
   const [search,   setSearch] = useState("");
+  const [page,     setPage]   = useState(1);
   const [modal,    setModal]  = useState(false);
   const [confirm,  setConfirm] = useState(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  const { data: records = [], isLoading: loading, error } = useSalesRecords({
-    search: debouncedSearch,
-  });
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
+
+  const {
+    data: { records = [], total = 0, totalPages = 1 } = {},
+    isLoading: loading,
+    isFetching,
+    error,
+  } = useSalesRecordsPaginated({ search: debouncedSearch, page, limit: 50 });
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const { remove } = useSalesRecordMutations();
@@ -335,58 +341,65 @@ export default function SalesRecordsPage() {
         </button>
       </div>
 
-      {/* Summary */}
+      {/* Summary (current page) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Records</p><p className="text-2xl font-bold text-slate-800">{records.length}</p></div>
-        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Received</p><p className="text-xl font-bold text-green-600">{fmt(records.reduce((s, r) => s + (Number(r.receivedAmount) || 0), 0))}</p></div>
-        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Outstanding</p><p className={`text-xl font-bold ${totalOutstanding > 0 ? "text-red-600" : "text-green-600"}`}>{fmt(totalOutstanding)}</p></div>
+        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Records</p><p className="text-2xl font-bold text-slate-800">{total}</p></div>
+        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Received (this page)</p><p className="text-xl font-bold text-green-600">{fmt(records.reduce((s, r) => s + (Number(r.receivedAmount) || 0), 0))}</p></div>
+        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Outstanding (this page)</p><p className={`text-xl font-bold ${totalOutstanding > 0 ? "text-red-600" : "text-green-600"}`}>{fmt(totalOutstanding)}</p></div>
       </div>
 
       <div className="card">
         <div className="card-header">
           <SearchBar value={search} onChange={setSearch} placeholder="Search by invoice no. or client…" />
-          <span className="text-sm text-slate-500">{records.length} records</span>
+          <span className="text-sm text-slate-500">
+            {total === 0
+              ? "No records"
+              : `${(page - 1) * 50 + 1}–${Math.min(page * 50, total)} of ${total} record${total !== 1 ? "s" : ""}`}
+          </span>
         </div>
 
         {loading ? <div className="p-8"><PageLoader /></div> : records.length === 0 ? (
           <Empty icon="fa-chart-line" message="No sales records found" action={<button onClick={() => setModal(true)} className="btn-primary">Create first record</button>} />
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Invoice No.</th>
-                  <th>Client</th>
-                  <th>Total</th>
-                  <th>Received</th>
-                  <th>Outstanding</th>
-                  <th>Status</th>
-                  <th className="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map((r) => (
-                  <tr key={r._id}>
-                    <td><span className="font-mono text-xs bg-blue-50 text-brand-600 border border-blue-100 px-2 py-0.5 rounded">{r.invoiceNumber}</span></td>
-                    <td>
-                      <p className="font-medium text-slate-800">{r.clientName}</p>
-                      {r.email && <p className="text-xs text-slate-400">{r.email}</p>}
-                    </td>
-                    <td className="font-medium">{fmt(r.totalAmount)}</td>
-                    <td className="text-green-600 font-medium">{fmt(r.receivedAmount)}</td>
-                    <td className={`font-bold ${Number(r.outstandingBalance) > 0 ? "text-red-600" : "text-green-600"}`}>{fmt(r.outstandingBalance)}</td>
-                    <td>{statusBadge(r)}</td>
-                    <td>
-                      <div className="flex justify-end gap-1">
-                        <button onClick={() => navigate(`/sales-records/${r._id}`)} className="btn-ghost text-xs py-1 px-2"><i className="fa fa-edit" /> Open</button>
-                        <button onClick={() => setConfirm(r)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2"><i className="fa fa-trash-alt" /></button>
-                      </div>
-                    </td>
+          <>
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Invoice No.</th>
+                    <th>Client</th>
+                    <th>Total</th>
+                    <th>Received</th>
+                    <th>Outstanding</th>
+                    <th>Status</th>
+                    <th className="text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {records.map((r) => (
+                    <tr key={r._id}>
+                      <td><span className="font-mono text-xs bg-blue-50 text-brand-600 border border-blue-100 px-2 py-0.5 rounded">{r.invoiceNumber}</span></td>
+                      <td>
+                        <p className="font-medium text-slate-800">{r.clientName}</p>
+                        {r.email && <p className="text-xs text-slate-400">{r.email}</p>}
+                      </td>
+                      <td className="font-medium">{fmt(r.totalAmount)}</td>
+                      <td className="text-green-600 font-medium">{fmt(r.receivedAmount)}</td>
+                      <td className={`font-bold ${Number(r.outstandingBalance) > 0 ? "text-red-600" : "text-green-600"}`}>{fmt(r.outstandingBalance)}</td>
+                      <td>{statusBadge(r)}</td>
+                      <td>
+                        <div className="flex justify-end gap-1">
+                          <button onClick={() => navigate(`/sales-records/${r._id}`)} className="btn-ghost text-xs py-1 px-2"><i className="fa fa-edit" /> Open</button>
+                          <button onClick={() => setConfirm(r)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2"><i className="fa fa-trash-alt" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={page} totalPages={totalPages} total={total} limit={50} onChange={setPage} isFetching={isFetching} />
+          </>
         )}
       </div>
 

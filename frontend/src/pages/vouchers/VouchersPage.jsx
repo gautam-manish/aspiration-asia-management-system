@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { voucherAPI, bookingAPI, hotelAPI } from "../../api";
 import { formatDate, notifyError } from "../../utils/helpers";
-import { PageLoader, Empty, SearchBar, Field, SectionTitle, HotelSearchSelect } from "../../components/common";
+import { PageLoader, Empty, SearchBar, Field, SectionTitle, HotelSearchSelect, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useVouchers, useHotels } from "../../hooks/useApiQueries";
+import { useVouchersPaginated, useHotels } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_ROOM = { roomCategory: "", noOfRooms: "", roomType: "" };
@@ -296,15 +296,28 @@ export default function VouchersPage() {
   const qc = useQueryClient();
   const [search, setSearch]   = useState("");
   const [date, setDate]       = useState("");
+  const [page, setPage]       = useState(1);
   const [modal, setModal]     = useState(false);
 
+  const PAGE_SIZE = 50;
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  const { data: list = [], isLoading: loading, error } = useVouchers({
-    search: debouncedSearch,
-    date,
-  });
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setPage(1); }, [debouncedSearch, date]);
+
+  const {
+    data: pageData = { vouchers: [], total: 0, totalPages: 1 },
+    isLoading: loading,
+    isFetching,
+    error,
+  } = useVouchersPaginated({ search: debouncedSearch, date, page, limit: PAGE_SIZE });
   useEffect(() => { if (error) notifyError(error); }, [error]);
+
+  const list       = pageData.vouchers;
+  const total      = pageData.total      || 0;
+  const totalPages = pageData.totalPages || 1;
+  const fromRow    = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const toRow      = Math.min(page * PAGE_SIZE, total);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["vouchers"] });
 
@@ -323,45 +336,59 @@ export default function VouchersPage() {
           <SearchBar value={search} onChange={setSearch} placeholder="Search by guest…" />
           <input type="date" className="input w-auto" value={date} onChange={(e) => setDate(e.target.value)} />
           {date && <button onClick={() => setDate("")} className="btn-ghost text-xs">Clear</button>}
+          <span className="text-sm text-slate-500 ml-auto">
+            {total === 0 ? "No vouchers" : `${fromRow}–${toRow} of ${total} voucher${total !== 1 ? "s" : ""}`}
+          </span>
         </div>
 
         {loading ? <div className="p-8"><PageLoader /></div> : list.length === 0 ? (
           <Empty icon="fa-ticket-alt" message="No vouchers found" />
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Booking ID</th>
-                  <th>Guest Name</th>
-                  <th>Nationality</th>
-                  <th>Hotels</th>
-                  <th>Pax</th>
-                  <th>Created</th>
-                  <th className="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((v) => (
-                  <tr key={v._id}>
-                    <td className="text-xs font-mono text-slate-600">{v.bookingId || "—"}</td>
-                    <td className="font-medium text-slate-800">{v.guestName}</td>
-                    <td className="text-slate-500">{v.nationality || "—"}</td>
-                    <td className="text-xs text-slate-600">{v.hotels?.map((h) => h.hotelName).join(", ") || "—"}</td>
-                    <td className="text-xs">{v.pax?.adults}A {v.pax?.childWithBed ? `${v.pax.childWithBed}C` : ""}</td>
-                    <td className="text-xs text-slate-400">{formatDate(v.createdAt)}</td>
-                    <td>
-                      <div className="flex justify-end">
-                        <button onClick={() => navigate(`/vouchers/${v._id}`)} className="btn-ghost text-xs py-1 px-2">
-                          <i className="fa fa-eye" />
-                        </button>
-                      </div>
-                    </td>
+          <>
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Booking ID</th>
+                    <th>Guest Name</th>
+                    <th>Nationality</th>
+                    <th>Hotels</th>
+                    <th>Pax</th>
+                    <th>Created</th>
+                    <th className="text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {list.map((v) => (
+                    <tr key={v._id}>
+                      <td className="text-xs font-mono text-slate-600">{v.bookingId || "—"}</td>
+                      <td className="font-medium text-slate-800">{v.guestName}</td>
+                      <td className="text-slate-500">{v.nationality || "—"}</td>
+                      <td className="text-xs text-slate-600">{v.hotels?.map((h) => h.hotelName).join(", ") || "—"}</td>
+                      <td className="text-xs">{v.pax?.adults}A {v.pax?.childWithBed ? `${v.pax.childWithBed}C` : ""}</td>
+                      <td className="text-xs text-slate-400">{formatDate(v.createdAt)}</td>
+                      <td>
+                        <div className="flex justify-end">
+                          <button onClick={() => navigate(`/vouchers/${v._id}`)} className="btn-ghost text-xs py-1 px-2">
+                            <i className="fa fa-eye" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              limit={PAGE_SIZE}
+              onChange={setPage}
+              isFetching={isFetching}
+            />
+          </>
         )}
       </div>
 

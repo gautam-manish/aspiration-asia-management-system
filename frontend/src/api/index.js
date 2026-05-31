@@ -8,7 +8,13 @@ export const authAPI = {
 
 // ── Hotels ──────────────────────────────────────────────────────────
 export const hotelAPI = {
-  getAll:  (search = "") => api.get(`/hotels?search=${search}`),
+  // Accepts either a search string (legacy) or { search, page, limit } object.
+  getAll: (params = "") => {
+    if (typeof params === "string") {
+      return api.get(`/hotels?search=${encodeURIComponent(params)}`);
+    }
+    return api.get("/hotels", { params });
+  },
   getById: (id)          => api.get(`/hotels/${id}`),
   create:  (data)        => api.post("/hotels", data),
   update:  (id, data)    => api.put(`/hotels/${id}`, data),

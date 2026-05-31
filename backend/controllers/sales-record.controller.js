@@ -82,12 +82,13 @@ export const createSalesRecord = async (req, res) => {
 
 // ─────────────────────────────────────────
 // @desc    Get All Sales Records
-//          Search: clientName or invoiceNumber
+//          - GET /api/salesrecords?search=abc                    → ALL (back-compat)
+//          - GET /api/salesrecords?search=&page=1&limit=50       → paginated envelope
 // @route   GET /api/salesrecords?search=abc
 // ─────────────────────────────────────────
 export const getAllSalesRecords = async (req, res) => {
   try {
-    const { search } = req.query;
+    const { search, page, limit } = req.query;
     const filter = {};
 
     if (search) {
@@ -97,8 +98,31 @@ export const getAllSalesRecords = async (req, res) => {
       ];
     }
 
-    const records = await SalesRecord.find(filter).sort({ createdAt: -1 });
-    res.status(200).json({ success: true, message: "Sales records fetched successfully", data: records });
+    const wantsPagination = page !== undefined || limit !== undefined;
+
+    if (!wantsPagination) {
+      const records = await SalesRecord.find(filter).sort({ createdAt: -1 });
+      return res.status(200).json({ success: true, message: "Sales records fetched successfully", data: records });
+    }
+
+    const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const [records, total] = await Promise.all([
+      SalesRecord.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+      SalesRecord.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Sales records fetched successfully",
+      data: records,
+      total,
+      page:       pageNum,
+      limit:      limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message, data: null });
   }

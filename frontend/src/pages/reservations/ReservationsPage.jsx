@@ -3,9 +3,9 @@ import { useReactToPrint } from "react-to-print";
 import { useQueryClient } from "@tanstack/react-query";
 import { reservationAPI } from "../../api";
 import { formatDate, notifyError } from "../../utils/helpers";
-import { PageLoader, Empty, SearchBar, Field, SectionTitle } from "../../components/common";
+import { PageLoader, Empty, SearchBar, Field, SectionTitle, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useReservations } from "../../hooks/useApiQueries";
+import { useReservationsPaginated } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_FORM = {
@@ -180,6 +180,7 @@ export default function ReservationsPage() {
   const qc = useQueryClient();
   const [search, setSearch]   = useState("");
   const [date, setDate]       = useState("");
+  const [page, setPage]       = useState(1);
   const [modal, setModal]     = useState(false);
   const [printData, setPrintData] = useState(null);
   const printRef = useRef();
@@ -188,10 +189,14 @@ export default function ReservationsPage() {
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  const { data: list = [], isLoading: loading, error } = useReservations({
-    search: debouncedSearch,
-    date,
-  });
+  useEffect(() => { setPage(1); }, [debouncedSearch, date]);
+
+  const {
+    data: { reservations: list = [], total = 0, totalPages = 1 } = {},
+    isLoading: loading,
+    isFetching,
+    error,
+  } = useReservationsPaginated({ search: debouncedSearch, date, page, limit: 50 });
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["reservations"] });
@@ -221,47 +226,55 @@ export default function ReservationsPage() {
           <SearchBar value={search} onChange={setSearch} placeholder="Search by name…" />
           <input type="date" className="input w-auto" value={date} onChange={(e) => setDate(e.target.value)} />
           {date && <button onClick={() => setDate("")} className="btn-ghost text-xs">Clear</button>}
+          <span className="text-sm text-slate-500 ml-auto">
+            {total === 0
+              ? "No reservations"
+              : `${(page - 1) * 50 + 1}–${Math.min(page * 50, total)} of ${total} reservation${total !== 1 ? "s" : ""}`}
+          </span>
         </div>
 
         {loading ? <div className="p-8"><PageLoader /></div> : list.length === 0 ? (
           <Empty icon="fa-calendar-check" message="No reservations found" />
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Booking Name</th>
-                  <th>Nationality</th>
-                  <th>Room</th>
-                  <th>Check-In</th>
-                  <th>Check-Out</th>
-                  <th>Date Created</th>
-                  <th className="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((r) => (
-                  <tr key={r._id}>
-                    <td className="font-medium text-slate-800">{r.bookingName}</td>
-                    <td className="text-slate-500">{r.nationality || "—"}</td>
-                    <td className="text-xs text-slate-600">
-                      {r.room?.category} {r.room?.type} {r.room?.noOfRooms ? `(${r.room.noOfRooms}rm)` : ""}
-                    </td>
-                    <td className="text-xs">{r.visits?.visit1in || "—"}</td>
-                    <td className="text-xs">{r.visits?.visit1out || "—"}</td>
-                    <td className="text-xs text-slate-400">{formatDate(r.createdAt)}</td>
-                    <td>
-                      <div className="flex justify-end">
-                        <button onClick={() => triggerPrint(r)} className="btn-ghost text-xs py-1 px-2" title="Print">
-                          <i className="fa fa-print" />
-                        </button>
-                      </div>
-                    </td>
+          <>
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Booking Name</th>
+                    <th>Nationality</th>
+                    <th>Room</th>
+                    <th>Check-In</th>
+                    <th>Check-Out</th>
+                    <th>Date Created</th>
+                    <th className="text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {list.map((r) => (
+                    <tr key={r._id}>
+                      <td className="font-medium text-slate-800">{r.bookingName}</td>
+                      <td className="text-slate-500">{r.nationality || "—"}</td>
+                      <td className="text-xs text-slate-600">
+                        {r.room?.category} {r.room?.type} {r.room?.noOfRooms ? `(${r.room.noOfRooms}rm)` : ""}
+                      </td>
+                      <td className="text-xs">{r.visits?.visit1in || "—"}</td>
+                      <td className="text-xs">{r.visits?.visit1out || "—"}</td>
+                      <td className="text-xs text-slate-400">{formatDate(r.createdAt)}</td>
+                      <td>
+                        <div className="flex justify-end">
+                          <button onClick={() => triggerPrint(r)} className="btn-ghost text-xs py-1 px-2" title="Print">
+                            <i className="fa fa-print" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={page} totalPages={totalPages} total={total} limit={50} onChange={setPage} isFetching={isFetching} />
+          </>
         )}
       </div>
 

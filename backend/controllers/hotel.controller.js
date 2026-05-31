@@ -41,26 +41,52 @@ export const createHotel = async (req, res) => {
 };
 
 // ─────────────────────────────────────────
-// @desc    Get all Hotels (with optional search by name)
-// @route   GET /api/hotels?search=hilton
+// @desc    Get all Hotels.
+//          - GET /api/hotels?search=hilton                  → returns ALL matching (back-compat)
+//          - GET /api/hotels?search=hilton&page=1&limit=50  → paginated; envelope adds total/page/limit/totalPages
 // @access  Admin
 // ─────────────────────────────────────────
 export const getAllHotels = async (req, res) => {
   try {
-    const { search } = req.query;
+    const { search, page, limit } = req.query;
 
     const query = {};
-
     if (search) {
       query.name = { $regex: search, $options: "i" };
     }
 
-    const hotels = await Hotel.find(query).sort({ createdAt: -1 });
+    // Detect whether the client wants pagination. If neither page nor limit was
+    // supplied, behave exactly as before (return the whole list) so callers
+    // like the HotelSearchSelect autocomplete keep working unchanged.
+    const wantsPagination = page !== undefined || limit !== undefined;
 
-    res.status(200).json({
+    if (!wantsPagination) {
+      const hotels = await Hotel.find(query).sort({ createdAt: -1 });
+      return res.status(200).json({
+        success: true,
+        message: "Hotels fetched successfully",
+        data: hotels,
+      });
+    }
+
+    // ── Paginated path ──────────────────────────
+    const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const [hotels, total] = await Promise.all([
+      Hotel.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+      Hotel.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
       success: true,
       message: "Hotels fetched successfully",
       data: hotels,
+      total,
+      page:       pageNum,
+      limit:      limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
     res.status(500).json({

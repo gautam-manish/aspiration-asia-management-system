@@ -22,6 +22,21 @@ export function useBookings({ status = "confirmed", search = "" } = {}) {
   });
 }
 
+// Paginated variant for the Bookings list page.
+export function useBookingsPaginated({ status = "confirmed", search = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["bookings", "paginated", { status, search, page, limit }],
+    queryFn: () => bookingAPI.getAll({ status, search, page, limit }).then((r) => ({
+      bookings:   r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useBooking(id) {
   return useQuery({
     queryKey: ["booking", id],
@@ -67,10 +82,27 @@ export function useBookingMutations() {
 }
 
 // ── Hotels ──────────────────────────────────────────────────────────────────
+// Returns the full hotel list (no pagination). Used by autocomplete dropdowns.
 export function useHotels(search = "") {
   return useQuery({
     queryKey: ["hotels", { search }],
     queryFn: () => hotelAPI.getAll(search).then((r) => r.data?.data ?? []),
+  });
+}
+
+// Paginated variant for the Hotels list page.
+// Returns { hotels, total, page, limit, totalPages } so the page can render a footer.
+export function useHotelsPaginated({ search = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["hotels", "paginated", { search, page, limit }],
+    queryFn: () => hotelAPI.getAll({ search, page, limit }).then((r) => ({
+      hotels:     r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev, // smooth page transitions, no spinner flash
   });
 }
 
@@ -100,6 +132,20 @@ export function useReservations(params = {}) {
   });
 }
 
+export function useReservationsPaginated({ search = "", date = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["reservations", "paginated", { search, date, page, limit }],
+    queryFn: () => reservationAPI.getAll({ search, date, page, limit }).then((r) => ({
+      reservations: r.data?.data       ?? [],
+      total:        r.data?.total      ?? 0,
+      page:         r.data?.page       ?? page,
+      limit:        r.data?.limit      ?? limit,
+      totalPages:   r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useReservation(id) {
   return useQuery({
     queryKey: ["reservation", id],
@@ -122,6 +168,22 @@ export function useVouchers(params = {}) {
   return useQuery({
     queryKey: ["vouchers", params],
     queryFn: () => voucherAPI.getAll(params).then((r) => r.data?.data ?? []),
+  });
+}
+
+// Paginated variant for the Vouchers list page.
+// Returns the full envelope so the page can render a footer.
+export function useVouchersPaginated({ search = "", date = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["vouchers", "paginated", { search, date, page, limit }],
+    queryFn: () => voucherAPI.getAll({ search, date, page, limit }).then((r) => ({
+      vouchers:   r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -153,6 +215,20 @@ export function useInvoices(params = {}) {
   return useQuery({
     queryKey: ["invoices", params],
     queryFn: () => invoiceAPI.getAll(params).then((r) => r.data?.data ?? []),
+  });
+}
+
+export function useInvoicesPaginated({ search = "", date = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["invoices", "paginated", { search, date, page, limit }],
+    queryFn: () => invoiceAPI.getAll({ search, date, page, limit }).then((r) => ({
+      invoices:   r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -188,6 +264,20 @@ export function useCashReceipts(params = {}) {
   });
 }
 
+export function useCashReceiptsPaginated({ search = "", date = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["cash-receipts", "paginated", { search, date, page, limit }],
+    queryFn: () => cashReceiptAPI.getAll({ search, date, page, limit }).then((r) => ({
+      receipts:   r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useCashReceipt(id) {
   return useQuery({
     queryKey: ["cash-receipt", id],
@@ -210,6 +300,20 @@ export function useSundry(params = {}) {
   return useQuery({
     queryKey: ["sundry", params],
     queryFn: () => sundryAPI.getAll(params).then((r) => r.data?.data ?? []),
+  });
+}
+
+export function useSundryPaginated({ search = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["sundry", "paginated", { search, page, limit }],
+    queryFn: () => sundryAPI.getAll({ search, page, limit }).then((r) => ({
+      entries:    r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -246,6 +350,20 @@ export function useSalesRecords(params = {}) {
   });
 }
 
+export function useSalesRecordsPaginated({ search = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["sales-records", "paginated", { search, page, limit }],
+    queryFn: () => salesRecordAPI.getAll({ search, page, limit }).then((r) => ({
+      records:    r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useSalesRecord(id) {
   return useQuery({
     queryKey: ["sales-record", id],
@@ -275,6 +393,20 @@ export function usePurchaseRecords(params = {}) {
   return useQuery({
     queryKey: ["purchase-records", params],
     queryFn: () => purchaseRecordAPI.getAll(params).then((r) => r.data?.data ?? []),
+  });
+}
+
+export function usePurchaseRecordsPaginated({ search = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["purchase-records", "paginated", { search, page, limit }],
+    queryFn: () => purchaseRecordAPI.getAll({ search, page, limit }).then((r) => ({
+      records:    r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
   });
 }
 

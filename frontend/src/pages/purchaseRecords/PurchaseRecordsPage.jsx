@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { purchaseRecordAPI, sundryAPI } from "../../api";
 import { notifyError } from "../../utils/helpers";
-import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
-import { usePurchaseRecords, usePurchaseRecordMutations, useSundry } from "../../hooks/useApiQueries";
+import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { usePurchaseRecordsPaginated, usePurchaseRecordMutations, useSundry } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -236,18 +237,21 @@ export default function PurchaseRecordsPage() {
   const navigate             = useNavigate();
   const qc                   = useQueryClient();
   const [search,   setSearch]   = useState("");
+  const [page,     setPage]     = useState(1);
   const [modal,    setModal]    = useState(false);
   const [confirm,  setConfirm]  = useState(null);
 
-  // Fetch the full list once and filter locally — same behavior as before.
-  const { data: allRecs = [], isLoading: loading, error } = usePurchaseRecords();
-  useEffect(() => { if (error) notifyError(error); }, [error]);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  const records = useMemo(() => {
-    if (!search.trim()) return allRecs;
-    const q = search.toLowerCase();
-    return allRecs.filter((r) => r.debtorName.toLowerCase().includes(q));
-  }, [search, allRecs]);
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
+
+  const {
+    data: { records = [], total = 0, totalPages = 1 } = {},
+    isLoading: loading,
+    isFetching,
+    error,
+  } = usePurchaseRecordsPaginated({ search: debouncedSearch, page, limit: 50 });
+  useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const { remove } = usePurchaseRecordMutations();
   const refresh = () => qc.invalidateQueries({ queryKey: ["purchase-records"] });
@@ -277,71 +281,78 @@ export default function PurchaseRecordsPage() {
         </button>
       </div>
 
-      {/* Summary */}
+      {/* Summary (current page) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Debtors</p><p className="text-2xl font-bold text-slate-800">{records.length}</p></div>
-        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Debit (DR)</p><p className="text-xl font-bold text-red-600">{fmt(totalDR)}</p></div>
-        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Credit (CR)</p><p className="text-xl font-bold text-green-600">{fmt(totalCR)}</p></div>
-        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Net Balance</p><p className={`text-xl font-bold ${totalDR - totalCR >= 0 ? "text-red-600" : "text-green-600"}`}>{fmt(Math.abs(totalDR - totalCR))} {totalDR - totalCR >= 0 ? "DR" : "CR"}</p></div>
+        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Debtors</p><p className="text-2xl font-bold text-slate-800">{total}</p></div>
+        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Debit (this page)</p><p className="text-xl font-bold text-red-600">{fmt(totalDR)}</p></div>
+        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Credit (this page)</p><p className="text-xl font-bold text-green-600">{fmt(totalCR)}</p></div>
+        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Net Balance (this page)</p><p className={`text-xl font-bold ${totalDR - totalCR >= 0 ? "text-red-600" : "text-green-600"}`}>{fmt(Math.abs(totalDR - totalCR))} {totalDR - totalCR >= 0 ? "DR" : "CR"}</p></div>
       </div>
 
       <div className="card">
         <div className="card-header">
           <SearchBar value={search} onChange={setSearch} placeholder="Search by debtor name…" />
-          <span className="text-sm text-slate-500">{records.length} debtors</span>
+          <span className="text-sm text-slate-500">
+            {total === 0
+              ? "No debtors"
+              : `${(page - 1) * 50 + 1}–${Math.min(page * 50, total)} of ${total} debtor${total !== 1 ? "s" : ""}`}
+          </span>
         </div>
 
         {loading ? <div className="p-8"><PageLoader /></div> : records.length === 0 ? (
           <Empty icon="fa-book" message="No purchase records found" action={<button onClick={() => setModal(true)} className="btn-primary">Add first entry</button>} />
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Debtor</th>
-                  <th>PAN / VAT</th>
-                  <th>Opening Balance</th>
-                  <th>Total Debit</th>
-                  <th>Total Credit</th>
-                  <th>Closing Balance</th>
-                  <th>Entries</th>
-                  <th className="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map((r, i) => {
-                  const closing = Number(r.closingBalance || 0);
-                  const isDR = closing >= 0;
-                  return (
-                    <tr key={r._id}>
-                      <td className="text-slate-400 text-xs">{i + 1}</td>
-                      <td>
-                        <p className="font-medium text-slate-800">{r.debtorName}</p>
-                        {r.debtorCompany && <p className="text-xs text-slate-400">{r.debtorCompany}</p>}
-                      </td>
-                      <td className="text-slate-500 text-sm font-mono">{r.debtorPan || "—"}</td>
-                      <td className="text-sm">{fmt(r.openingBalance)}</td>
-                      <td className="text-red-600 font-medium text-sm">{fmt(r.totalDebit)}</td>
-                      <td className="text-green-600 font-medium text-sm">{fmt(r.totalCredit)}</td>
-                      <td>
-                        <span className={`font-bold text-sm ${isDR ? "text-red-600" : "text-green-600"}`}>
-                          {fmt(Math.abs(closing))} <span className="text-xs font-semibold">{isDR ? "DR" : "CR"}</span>
-                        </span>
-                      </td>
-                      <td className="text-slate-500 text-sm">{(r.transactions || []).length}</td>
-                      <td>
-                        <div className="flex justify-end gap-1">
-                          <button onClick={() => navigate(`/purchase-records/${r._id}`)} className="btn-ghost text-xs py-1 px-2"><i className="fa fa-eye" /> View</button>
-                          <button onClick={() => setConfirm(r)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2"><i className="fa fa-trash-alt" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Debtor</th>
+                    <th>PAN / VAT</th>
+                    <th>Opening Balance</th>
+                    <th>Total Debit</th>
+                    <th>Total Credit</th>
+                    <th>Closing Balance</th>
+                    <th>Entries</th>
+                    <th className="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map((r, i) => {
+                    const closing = Number(r.closingBalance || 0);
+                    const isDR = closing >= 0;
+                    return (
+                      <tr key={r._id}>
+                        <td className="text-slate-400 text-xs">{(page - 1) * 50 + i + 1}</td>
+                        <td>
+                          <p className="font-medium text-slate-800">{r.debtorName}</p>
+                          {r.debtorCompany && <p className="text-xs text-slate-400">{r.debtorCompany}</p>}
+                        </td>
+                        <td className="text-slate-500 text-sm font-mono">{r.debtorPan || "—"}</td>
+                        <td className="text-sm">{fmt(r.openingBalance)}</td>
+                        <td className="text-red-600 font-medium text-sm">{fmt(r.totalDebit)}</td>
+                        <td className="text-green-600 font-medium text-sm">{fmt(r.totalCredit)}</td>
+                        <td>
+                          <span className={`font-bold text-sm ${isDR ? "text-red-600" : "text-green-600"}`}>
+                            {fmt(Math.abs(closing))} <span className="text-xs font-semibold">{isDR ? "DR" : "CR"}</span>
+                          </span>
+                        </td>
+                        <td className="text-slate-500 text-sm">{(r.transactions || []).length}</td>
+                        <td>
+                          <div className="flex justify-end gap-1">
+                            <button onClick={() => navigate(`/purchase-records/${r._id}`)} className="btn-ghost text-xs py-1 px-2"><i className="fa fa-eye" /> View</button>
+                            <button onClick={() => setConfirm(r)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2"><i className="fa fa-trash-alt" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={page} totalPages={totalPages} total={total} limit={50} onChange={setPage} isFetching={isFetching} />
+          </>
         )}
       </div>
 

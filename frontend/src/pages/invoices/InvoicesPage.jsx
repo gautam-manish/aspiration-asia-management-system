@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { invoiceAPI, bookingAPI } from "../../api";
 import { todayString, notifyError } from "../../utils/helpers";
-import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
+import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useInvoices, useInvoiceMutations } from "../../hooks/useApiQueries";
+import { useInvoicesPaginated, useInvoiceMutations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_LINE = { description: "", details: "", qty: 1, rate: 0, amount: 0 };
@@ -40,6 +40,10 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
         discountType:  invoice.discountType  || "none",
         discountValue: invoice.discountValue || 0,
         discount:      invoice.discount      || 0,
+        taxApplicable: !!invoice.taxApplicable,
+        taxPercent:    invoice.taxPercent    || 0,
+        taxAmount:     invoice.taxAmount     || 0,
+        totalWithTax:  invoice.totalWithTax  || 0,
         advance:       invoice.advance       || 0,
         total:         invoice.total         || 0,
         currency:      invoice.currency      || "Rs.",
@@ -61,7 +65,9 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       },
       billTo: { name: "", email: "", address: "", mobile: "" },
       lineItems: [{ ...EMPTY_LINE }],
-      subtotal: 0, discountType: "none", discountValue: 0, discount: 0, advance: 0, total: 0,
+      subtotal: 0, discountType: "none", discountValue: 0, discount: 0,
+      taxApplicable: false, taxPercent: 0, taxAmount: 0, totalWithTax: 0,
+      advance: 0, total: 0,
       currency: "Rs.", notes: "", terms: "",
     };
   };
@@ -117,14 +123,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       if (k === "qty" || k === "rate") {
         lines[i].amount = round2((Number(lines[i].qty) || 0) * (Number(lines[i].rate) || 0));
       }
-      const subtotal = round2(lines.reduce((s, l) => s + (Number(l.amount) || 0), 0));
-      const discount = round2(
-        f.discountType === "percent"
-          ? (subtotal * (Number(f.discountValue) || 0)) / 100
-          : (Number(f.discountValue) || 0)
-      );
-      const total = round2(subtotal - discount - (Number(f.advance) || 0));
-      return { ...f, lineItems: lines, subtotal, discount, total };
+      return recalc({ ...f, lineItems: lines });
     });
   };
 
@@ -135,8 +134,13 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
         ? (subtotal * (Number(f.discountValue) || 0)) / 100
         : (Number(f.discountValue) || 0)
     );
-    const total = round2(subtotal - discount - (Number(f.advance) || 0));
-    return { ...f, subtotal, discount, total };
+    const taxBase  = round2(subtotal - discount);
+    const taxAmount = f.taxApplicable
+      ? round2((taxBase * (Number(f.taxPercent) || 0)) / 100)
+      : 0;
+    const totalWithTax = round2(taxBase + taxAmount);
+    const total = round2(totalWithTax - (Number(f.advance) || 0));
+    return { ...f, subtotal, discount, taxAmount, totalWithTax, total };
   };
 
   const addLine    = () => setForm((f) => ({ ...f, lineItems: [...f.lineItems, { ...EMPTY_LINE }] }));
@@ -333,6 +337,47 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
                   </span>
                 </div>
 
+                {/* Tax applicable? */}
+                <div className="flex justify-between items-center text-base text-slate-600 gap-2 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                      checked={form.taxApplicable}
+                      onChange={(e) => setForm((f) => recalc({ ...f, taxApplicable: e.target.checked }))}
+                    />
+                    <span className="font-medium whitespace-nowrap">Tax applicable?</span>
+                  </label>
+                  {form.taxApplicable && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        className="input py-1 text-sm w-20 text-right"
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={form.taxPercent}
+                        onChange={(e) => setForm((f) => recalc({ ...f, taxPercent: e.target.value }))}
+                        placeholder="0"
+                      />
+                      <span className="text-slate-500 text-sm">%</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* VAT/GST amount + Total inc tax (only when applicable) */}
+                {form.taxApplicable && (
+                  <>
+                    <div className="flex justify-between items-center text-base text-slate-600">
+                      <span className="font-medium">VAT / GST</span>
+                      <span>+ {form.currency} {fmt(form.taxAmount)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-base text-slate-700 border-t border-slate-200 pt-2">
+                      <span className="font-semibold">Total including VAT/GST</span>
+                      <span className="font-semibold">{form.currency} {fmt(form.totalWithTax)}</span>
+                    </div>
+                  </>
+                )}
+
                 {/* Advance */}
                 <div className="flex justify-between items-center text-base text-slate-600 gap-2">
                   <div className="flex items-center gap-2">
@@ -385,15 +430,20 @@ export default function InvoicesPage() {
   const qc = useQueryClient();
   const [search, setSearch]   = useState("");
   const [date, setDate]       = useState("");
+  const [page, setPage]       = useState(1);
   const [modal, setModal]     = useState(false);
   const [confirm, setConfirm] = useState(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  const { data: list = [], isLoading: loading, error } = useInvoices({
-    search: debouncedSearch,
-    date,
-  });
+  useEffect(() => { setPage(1); }, [debouncedSearch, date]);
+
+  const {
+    data: { invoices: list = [], total = 0, totalPages = 1 } = {},
+    isLoading: loading,
+    isFetching,
+    error,
+  } = useInvoicesPaginated({ search: debouncedSearch, date, page, limit: 50 });
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const { remove } = useInvoiceMutations();
@@ -424,38 +474,46 @@ export default function InvoicesPage() {
           <SearchBar value={search} onChange={setSearch} placeholder="Search by client, booking ID, invoice #…" />
           <input type="date" className="input w-auto" value={date} onChange={(e) => setDate(e.target.value)} />
           {date && <button onClick={() => setDate("")} className="btn-ghost text-xs">Clear</button>}
+          <span className="text-sm text-slate-500 ml-auto">
+            {total === 0
+              ? "No invoices"
+              : `${(page - 1) * 50 + 1}–${Math.min(page * 50, total)} of ${total} invoice${total !== 1 ? "s" : ""}`}
+          </span>
         </div>
 
         {loading ? <div className="p-8"><PageLoader /></div> : list.length === 0 ? (
           <Empty icon="fa-file-invoice" message="No invoices yet" />
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead><tr>
-                <th>Invoice #</th><th>Booking ID</th><th>Date</th><th>Bill To</th><th>Total</th><th>Actions</th>
-              </tr></thead>
-              <tbody>
-                {list.map((inv) => (
-                  <tr key={inv._id}>
-                    <td className="font-mono text-xs text-brand-600 font-medium">{inv.invoiceNumber}</td>
-                    <td className="font-mono text-xs text-slate-600">{inv.bookingId || "—"}</td>
-                    <td className="text-xs text-slate-500">{inv.invoiceDate}</td>
-                    <td>
-                      <p className="font-medium text-slate-800">{inv.billTo?.name}</p>
-                      <p className="text-xs text-slate-400">{inv.billTo?.email}</p>
-                    </td>
-                    <td className="font-semibold text-slate-800">{inv.currency} {Number(inv.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td>
-                      <div className="flex gap-1">
-                        <button onClick={() => navigate(`/invoices/${inv._id}`)} className="btn-ghost text-xs py-1 px-2"><i className="fa fa-eye" /></button>
-                        <button onClick={() => setConfirm(inv)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2"><i className="fa fa-trash-alt" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="table-wrapper">
+              <table className="table">
+                <thead><tr>
+                  <th>Invoice #</th><th>Booking ID</th><th>Date</th><th>Bill To</th><th>Total</th><th>Actions</th>
+                </tr></thead>
+                <tbody>
+                  {list.map((inv) => (
+                    <tr key={inv._id}>
+                      <td className="font-mono text-xs text-brand-600 font-medium">{inv.invoiceNumber}</td>
+                      <td className="font-mono text-xs text-slate-600">{inv.bookingId || "—"}</td>
+                      <td className="text-xs text-slate-500">{inv.invoiceDate}</td>
+                      <td>
+                        <p className="font-medium text-slate-800">{inv.billTo?.name}</p>
+                        <p className="text-xs text-slate-400">{inv.billTo?.email}</p>
+                      </td>
+                      <td className="font-semibold text-slate-800">{inv.currency} {Number(inv.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td>
+                        <div className="flex gap-1">
+                          <button onClick={() => navigate(`/invoices/${inv._id}`)} className="btn-ghost text-xs py-1 px-2"><i className="fa fa-eye" /></button>
+                          <button onClick={() => setConfirm(inv)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2"><i className="fa fa-trash-alt" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={page} totalPages={totalPages} total={total} limit={50} onChange={setPage} isFetching={isFetching} />
+          </>
         )}
       </div>
 

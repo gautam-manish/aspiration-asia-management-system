@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { bookingAPI, sundryAPI } from "../../api";
 import { formatDate, notifyError } from "../../utils/helpers";
-import { PageLoader, Empty, SearchBar, StatusBadge, Field, ConfirmModal } from "../../components/common";
+import { PageLoader, Empty, SearchBar, StatusBadge, Field, ConfirmModal, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useQueryClient } from "@tanstack/react-query";
-import { useBookings, useBookingMutations, useSundryDropdown } from "../../hooks/useApiQueries";
+import { useBookingsPaginated, useBookingMutations, useSundryDropdown } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_FORM = {
@@ -239,17 +239,23 @@ export default function BookingsPage() {
   const qc = useQueryClient();
   const [status, setStatus]     = useState("confirmed");
   const [search, setSearch]     = useState("");
+  const [page, setPage]         = useState(1);
   const [modal, setModal]       = useState(null);
   const [nextId, setNextId]     = useState("");
   const [cancelTarget, setCancelTarget] = useState(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
+  // Reset to first page whenever search/status changes
+  useEffect(() => { setPage(1); }, [debouncedSearch, status]);
+
   // ── Data ──────────────────────────────────────────────────────────────
-  const { data: bookings = [], isLoading: loading, error } = useBookings({
-    status,
-    search: debouncedSearch,
-  });
+  const {
+    data: { bookings = [], total = 0, totalPages = 1 } = {},
+    isLoading: loading,
+    isFetching,
+    error,
+  } = useBookingsPaginated({ status, search: debouncedSearch, page, limit: 50 });
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const refreshBookings = () => qc.invalidateQueries({ queryKey: ["bookings"] });
@@ -308,61 +314,68 @@ export default function BookingsPage() {
       <div className="card">
         <div className="card-header">
           <SearchBar value={search} onChange={setSearch} placeholder="Search by name, ID, destination…" />
-          <span className="text-sm text-slate-500">{bookings.length} records</span>
+          <span className="text-sm text-slate-500">
+            {total === 0
+              ? `No ${status} bookings`
+              : `${(page - 1) * 50 + 1}–${Math.min(page * 50, total)} of ${total} booking${total !== 1 ? "s" : ""}`}
+          </span>
         </div>
 
         {loading ? <div className="p-8"><PageLoader /></div> : bookings.length === 0 ? (
           <Empty icon="fa-bookmark" message={`No ${status} bookings`} />
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Booking ID</th>
-                  <th>Client / Agent</th>
-                  <th>Destination</th>
-                  <th>Arrival</th>
-                  <th>Departure</th>
-                  <th>Pax</th>
-                  <th>Status</th>
-                  <th className="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bookings.map((b) => (
-                  <tr key={b._id}>
-                    <td className="font-mono text-xs text-brand-600 font-medium">{b.queryId}</td>
-                    <td>
-                      <p className="font-medium text-slate-800">{b.clientName}</p>
-                      <p className="text-xs text-slate-400">{b.email}</p>
-                    </td>
-                    <td><span className="badge badge-blue">{b.destination}</span></td>
-                    <td className="text-slate-600 text-xs">{formatDate(b.arrivalDate)}</td>
-                    <td className="text-slate-600 text-xs">{formatDate(b.departureDate)}</td>
-                    <td className="text-xs text-slate-600">
-                      {b.adults}A {b.childEB ? `${b.childEB}CEB ` : ""}{b.childNoEB ? `${b.childNoEB}CNEB ` : ""}{b.childU5 ? `${b.childU5}U5` : ""}
-                    </td>
-                    <td><StatusBadge status={b.status} /></td>
-                    <td>
-                      <div className="flex justify-end gap-1">
-                        <button onClick={() => navigate(`/bookings/${b._id}`)} className="btn-ghost text-xs py-1 px-2" title="View">
-                          <i className="fa fa-eye" />
-                        </button>
-                        <button onClick={() => { setNextId(b.queryId); setModal(b); }} className="btn-ghost text-xs py-1 px-2" title="Edit">
-                          <i className="fa fa-edit" />
-                        </button>
-                        {b.status === "confirmed" && (
-                          <button onClick={() => setCancelTarget(b)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2" title="Cancel">
-                            <i className="fa fa-ban" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
+          <>
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Booking ID</th>
+                    <th>Client / Agent</th>
+                    <th>Destination</th>
+                    <th>Arrival</th>
+                    <th>Departure</th>
+                    <th>Pax</th>
+                    <th>Status</th>
+                    <th className="text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {bookings.map((b) => (
+                    <tr key={b._id}>
+                      <td className="font-mono text-xs text-brand-600 font-medium">{b.queryId}</td>
+                      <td>
+                        <p className="font-medium text-slate-800">{b.clientName}</p>
+                        <p className="text-xs text-slate-400">{b.email}</p>
+                      </td>
+                      <td><span className="badge badge-blue">{b.destination}</span></td>
+                      <td className="text-slate-600 text-xs">{formatDate(b.arrivalDate)}</td>
+                      <td className="text-slate-600 text-xs">{formatDate(b.departureDate)}</td>
+                      <td className="text-xs text-slate-600">
+                        {b.adults}A {b.childEB ? `${b.childEB}CEB ` : ""}{b.childNoEB ? `${b.childNoEB}CNEB ` : ""}{b.childU5 ? `${b.childU5}U5` : ""}
+                      </td>
+                      <td><StatusBadge status={b.status} /></td>
+                      <td>
+                        <div className="flex justify-end gap-1">
+                          <button onClick={() => navigate(`/bookings/${b._id}`)} className="btn-ghost text-xs py-1 px-2" title="View">
+                            <i className="fa fa-eye" />
+                          </button>
+                          <button onClick={() => { setNextId(b.queryId); setModal(b); }} className="btn-ghost text-xs py-1 px-2" title="Edit">
+                            <i className="fa fa-edit" />
+                          </button>
+                          {b.status === "confirmed" && (
+                            <button onClick={() => setCancelTarget(b)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2" title="Cancel">
+                              <i className="fa fa-ban" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={page} totalPages={totalPages} total={total} limit={50} onChange={setPage} isFetching={isFetching} />
+          </>
         )}
       </div>
 

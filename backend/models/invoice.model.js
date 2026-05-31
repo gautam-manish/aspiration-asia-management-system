@@ -61,8 +61,15 @@ const invoiceSchema = new mongoose.Schema(
     discountType: { type: String, default: "none" },
     discountValue: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
+
+    // ── VAT / GST ──
+    taxApplicable: { type: Boolean, default: false },
+    taxPercent:    { type: Number,  default: 0 },   // %
+    taxAmount:     { type: Number,  default: 0 },   // computed
+    totalWithTax:  { type: Number,  default: 0 },   // subtotal - discount + taxAmount
+
     advance: { type: Number, default: 0 },
-    total: { type: Number, default: 0 },
+    total: { type: Number, default: 0 },             // Final Total Due / Balance Due
     currency: { type: String, default: "$" },
 
     notes: { type: String, trim: true },

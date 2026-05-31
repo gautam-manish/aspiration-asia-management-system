@@ -139,12 +139,13 @@ export const createBooking = async (req, res) => {
 
 // ─────────────────────────────────────────
 // @desc    Get All Bookings
-//          Filters: status, search (clientName / queryId / destination)
+//          - GET /api/bookings?status=confirmed&search=john          → ALL (back-compat)
+//          - GET /api/bookings?status=confirmed&page=1&limit=50      → paginated envelope
 // @route   GET /api/bookings?status=confirmed&search=john
 // ─────────────────────────────────────────
 export const getAllBookings = async (req, res) => {
   try {
-    const { status, search } = req.query;
+    const { status, search, page, limit } = req.query;
     const filter = {};
 
     // Status filter (default: confirmed)
@@ -163,14 +164,35 @@ export const getAllBookings = async (req, res) => {
       ];
     }
 
-    const bookings = await Booking.find(filter).sort({ createdAt: -1 });
-    res
-      .status(200)
-      .json({
+    const wantsPagination = page !== undefined || limit !== undefined;
+
+    if (!wantsPagination) {
+      const bookings = await Booking.find(filter).sort({ createdAt: -1 });
+      return res.status(200).json({
         success: true,
         message: "Bookings fetched successfully",
         data: bookings,
       });
+    }
+
+    const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const [bookings, total] = await Promise.all([
+      Booking.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+      Booking.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Bookings fetched successfully",
+      data: bookings,
+      total,
+      page:       pageNum,
+      limit:      limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+    });
   } catch (error) {
     res
       .status(500)
@@ -318,7 +340,7 @@ export const updateBookingStatus = async (req, res) => {
 // ─────────────────────────────────────────
 export const saveItinerary = async (req, res) => {
   try {
-    const { itinerary } = req.body;
+    const { itinerary, itineraryIncludes, itineraryExcludes } = req.body;
 
     if (!Array.isArray(itinerary)) {
       return res.status(400).json({
@@ -328,9 +350,13 @@ export const saveItinerary = async (req, res) => {
       });
     }
 
+    const update = { itinerary };
+    if (itineraryIncludes !== undefined) update.itineraryIncludes = String(itineraryIncludes || "").trim();
+    if (itineraryExcludes !== undefined) update.itineraryExcludes = String(itineraryExcludes || "").trim();
+
     const booking = await Booking.findByIdAndUpdate(
       req.params.id,
-      { $set: { itinerary } },
+      { $set: update },
       { returnDocument: "after", runValidators: true }
     );
 

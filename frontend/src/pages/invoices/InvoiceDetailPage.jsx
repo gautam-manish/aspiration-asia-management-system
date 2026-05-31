@@ -107,24 +107,38 @@ export function InvoicePrint({ inv }) {
         {/* ── TOTALS (right-aligned) ── */}
         <div style={{ padding: "8px 32px 4px", display: "flex", justifyContent: "flex-end" }}>
           <div style={{ width: 280 }}>
-            {inv.advance > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
-                <span style={{ fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.75rem" }}>Booking Amount</span>
-                <span style={{ color: "#16a34a", fontWeight: 500, fontSize: "0.9rem" }}>{cur} {fmt(inv.advance)}</span>
-              </div>
-            )}
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
+              <span style={{ fontWeight: 600, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.8rem" }}>Subtotal</span>
+              <span style={{ color: "#1e293b", fontWeight: 500, fontSize: "0.9rem" }}>{cur} {fmt(inv.subtotal)}</span>
+            </div>
             {inv.discount > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
                 <span style={{ fontWeight: 600, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.8rem" }}>Discount</span>
                 <span style={{ color: "#ef4444", fontWeight: 500, fontSize: "0.9rem" }}>- {cur} {fmt(inv.discount)}</span>
               </div>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
-              <span style={{ fontWeight: 600, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.8rem" }}>Subtotal</span>
-              <span style={{ color: "#1e293b", fontWeight: 500, fontSize: "0.9rem" }}>{cur} {fmt(inv.subtotal)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: "0.95rem" }}>
-              <span style={{ fontWeight: 700, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.06em" }}>Total</span>
+            {inv.taxApplicable && (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
+                  <span style={{ fontWeight: 600, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.8rem" }}>
+                    VAT / GST {inv.taxPercent ? `(${inv.taxPercent}%)` : ""}
+                  </span>
+                  <span style={{ color: "#1e293b", fontWeight: 500, fontSize: "0.9rem" }}>+ {cur} {fmt(inv.taxAmount)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderTop: "1px solid #e2e8f0", marginTop: 2 }}>
+                  <span style={{ fontWeight: 700, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.8rem" }}>Total incl. VAT/GST</span>
+                  <span style={{ color: "#1e293b", fontWeight: 700, fontSize: "0.95rem" }}>{cur} {fmt(inv.totalWithTax)}</span>
+                </div>
+              </>
+            )}
+            {inv.advance > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
+                <span style={{ fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.75rem" }}>Advance Payment</span>
+                <span style={{ color: "#16a34a", fontWeight: 500, fontSize: "0.9rem" }}>- {cur} {fmt(inv.advance)}</span>
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: "0.95rem", borderTop: "2px solid #e2e8f0", marginTop: 4 }}>
+              <span style={{ fontWeight: 700, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.06em" }}>Total Due</span>
               <span style={{ fontWeight: 700, color: "#1e293b" }}>{cur} {fmt(inv.total)}</span>
             </div>
           </div>
@@ -317,28 +331,36 @@ export default function InvoiceDetailPage() {
           {/* Totals */}
           <div className="card-body flex justify-end">
             <div className="w-64 space-y-1">
-              {inv.advance > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
-                  <span>Booking Amount</span>
-                  <span>{cur} {fmt(inv.advance)}</span>
-                </div>
-              )}
+              <div className="flex justify-between text-sm text-slate-600">
+                <span>Subtotal</span>
+                <span>{cur} {fmt(inv.subtotal)}</span>
+              </div>
               {inv.discount > 0 && (
                 <div className="flex justify-between text-sm text-red-500">
                   <span>Discount</span>
                   <span>- {cur} {fmt(inv.discount)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-sm text-slate-600">
-                <span>Subtotal</span>
-                <span>{cur} {fmt(inv.subtotal)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-slate-800 text-base pt-1 border-t border-slate-200">
-                <span>Total</span>
-                <span>{cur} {fmt(inv.total)}</span>
-              </div>
+              {inv.taxApplicable && (
+                <>
+                  <div className="flex justify-between text-sm text-slate-600">
+                    <span>VAT / GST {inv.taxPercent ? `(${inv.taxPercent}%)` : ""}</span>
+                    <span>+ {cur} {fmt(inv.taxAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold text-slate-700 pt-1 border-t border-slate-200">
+                    <span>Total incl. VAT/GST</span>
+                    <span>{cur} {fmt(inv.totalWithTax)}</span>
+                  </div>
+                </>
+              )}
+              {inv.advance > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Advance Payment</span>
+                  <span>- {cur} {fmt(inv.advance)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-brand-700 text-lg pt-1 border-t-2 border-slate-200">
-                <span>Balance Due</span>
+                <span>Total Due</span>
                 <span>{cur} {fmt(inv.total)}</span>
               </div>
             </div>

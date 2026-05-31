@@ -98,11 +98,13 @@ export const createReservation = async (req, res) => {
 
 // ─────────────────────────────────────────
 // @desc    Get All Reservations (search by name or date)
+//          - GET /api/reservations?search=john&date=2024-01-01           → ALL (back-compat)
+//          - GET /api/reservations?search=&page=1&limit=50               → paginated envelope
 // @route   GET /api/reservations?search=john&date=2024-01-01
 // ─────────────────────────────────────────
 export const getAllReservations = async (req, res) => {
   try {
-    const { search, date } = req.query;
+    const { search, date, page, limit } = req.query;
     const query = {};
 
     if (search) {
@@ -117,9 +119,31 @@ export const getAllReservations = async (req, res) => {
       query.createdAt = { $gte: start, $lte: end };
     }
 
-    const reservations = await Reservation.find(query).sort({ createdAt: -1 });
+    const wantsPagination = page !== undefined || limit !== undefined;
 
-    res.status(200).json({ success: true, message: "Reservations fetched successfully", data: reservations });
+    if (!wantsPagination) {
+      const reservations = await Reservation.find(query).sort({ createdAt: -1 });
+      return res.status(200).json({ success: true, message: "Reservations fetched successfully", data: reservations });
+    }
+
+    const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const [reservations, total] = await Promise.all([
+      Reservation.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+      Reservation.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Reservations fetched successfully",
+      data: reservations,
+      total,
+      page:       pageNum,
+      limit:      limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message, data: null });
   }

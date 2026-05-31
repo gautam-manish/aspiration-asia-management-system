@@ -16,11 +16,12 @@ const calcClosing = (opening = 0, dr = 0, cr = 0) =>
 
 // ─────────────────────────────────────────────
 // GET ALL PURCHASE RECORDS
-// GET /api/purchaserecords
+//   - GET /api/purchaserecords?search=abc                       → ALL (back-compat)
+//   - GET /api/purchaserecords?search=&page=1&limit=50          → paginated envelope
 // ─────────────────────────────────────────────
 export const getAllPurchaseRecords = async (req, res) => {
   try {
-    const { search = "" } = req.query;
+    const { search = "", page, limit } = req.query;
 
     const filter = search
       ? {
@@ -31,13 +32,34 @@ export const getAllPurchaseRecords = async (req, res) => {
         }
       : {};
 
-    const records = await PurchaseRecord.find(filter)
-      .sort({ debtorName: 1 });
+    const wantsPagination = page !== undefined || limit !== undefined;
+
+    if (!wantsPagination) {
+      const records = await PurchaseRecord.find(filter).sort({ debtorName: 1 });
+      return res.status(200).json({
+        success: true,
+        count: records.length,
+        data: records,
+      });
+    }
+
+    const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const [records, total] = await Promise.all([
+      PurchaseRecord.find(filter).sort({ debtorName: 1 }).skip(skip).limit(limitNum),
+      PurchaseRecord.countDocuments(filter),
+    ]);
 
     return res.status(200).json({
       success: true,
       count: records.length,
       data: records,
+      total,
+      page:       pageNum,
+      limit:      limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
     console.error("getAllPurchaseRecords error:", error);

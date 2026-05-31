@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { hotelAPI } from "../../api";
 import { formatCurrency, notifyError } from "../../utils/helpers";
-import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
+import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useHotels, useHotelMutations } from "../../hooks/useApiQueries";
+import { useHotelsPaginated, useHotelMutations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const MEAL_PLANS = ["EP", "CP", "MAP", "AP", "JP"];
@@ -171,22 +171,39 @@ function HotelModal({ hotel, onClose, onSaved }) {
 export default function HotelsPage() {
   const qc = useQueryClient();
   const [search, setSearch]   = useState("");
+  const [page, setPage]       = useState(1);
   const [modal, setModal]     = useState(null); // null | "add" | hotel obj
   const [confirm, setConfirm] = useState(null);
 
+  const PAGE_SIZE = 50;
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  const { data: rawHotels = [], isLoading: loading, error } = useHotels(debouncedSearch);
+  // Reset to page 1 whenever the search query changes — otherwise the user
+  // could land on page 5 of a filtered set with only 2 pages of results.
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
+
+  const {
+    data: pageData = { hotels: [], total: 0, totalPages: 1 },
+    isLoading: loading,
+    isFetching,
+    error,
+  } = useHotelsPaginated({ search: debouncedSearch, page, limit: PAGE_SIZE });
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
-  // Sort once per data change
+  // Sort just the current page (alphabetical by name).
   const hotels = useMemo(() => {
-    return [...rawHotels].sort((a, b) =>
+    return [...pageData.hotels].sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
     );
-  }, [rawHotels]);
+  }, [pageData.hotels]);
+
+  const total      = pageData.total      || 0;
+  const totalPages = pageData.totalPages || 1;
+  const fromRow    = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const toRow      = Math.min(page * PAGE_SIZE, total);
 
   const { remove } = useHotelMutations();
+  // Invalidate BOTH the autocomplete cache and the paginated cache.
   const refresh = () => qc.invalidateQueries({ queryKey: ["hotels"] });
 
   const handleDelete = () => {
@@ -214,52 +231,66 @@ export default function HotelsPage() {
       <div className="card">
         <div className="card-header">
           <SearchBar value={search} onChange={setSearch} placeholder="Search hotels…" />
-          <span className="text-sm text-slate-500">{hotels.length} hotels</span>
+          <span className="text-sm text-slate-500">
+            {total === 0 ? "No hotels" : `${fromRow}–${toRow} of ${total} hotel${total !== 1 ? "s" : ""}`}
+          </span>
         </div>
 
         {loading ? <div className="p-8"><PageLoader /></div> : hotels.length === 0 ? (
           <Empty icon="fa-hotel" message="No hotels found" action={<button onClick={() => setModal("add")} className="btn-primary">Add your first hotel</button>} />
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Hotel Name</th>
-                  <th>Location</th>
-                  <th>Contact Number</th>
-                  <th className="text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hotels.map((h) => (
-                  <tr key={h._id}>
-                    <td>
-                      <p className="font-medium text-slate-800">{h.name}</p>
-                      {h.googleMapUrl && (
-                        <a href={h.googleMapUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-500 hover:underline">
-                          <i className="fa fa-map-marker-alt text-[10px]" /> Map
-                        </a>
-                      )}
-                    </td>
-                    <td className="text-slate-500">{h.city}, {h.country}</td>
-                    <td className="text-slate-600">
-                      {h.contactNumbers?.filter(Boolean).join(" / ") || "—"}
-                    </td>
-                    <td>
-                      <div className="flex justify-center gap-1">
-                        <button onClick={() => setModal(h)} className="btn-ghost text-xs py-1 px-2">
-                          <i className="fa fa-edit" />
-                        </button>
-                        <button onClick={() => setConfirm(h)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2">
-                          <i className="fa fa-trash-alt" />
-                        </button>
-                      </div>
-                    </td>
+          <>
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Hotel Name</th>
+                    <th>Location</th>
+                    <th>Contact Number</th>
+                    <th className="text-center">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {hotels.map((h) => (
+                    <tr key={h._id}>
+                      <td>
+                        <p className="font-medium text-slate-800">{h.name}</p>
+                        {h.googleMapUrl && (
+                          <a href={h.googleMapUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-500 hover:underline">
+                            <i className="fa fa-map-marker-alt text-[10px]" /> Map
+                          </a>
+                        )}
+                      </td>
+                      <td className="text-slate-500">{h.city}, {h.country}</td>
+                      <td className="text-slate-600">
+                        {h.contactNumbers?.filter(Boolean).join(" / ") || "—"}
+                      </td>
+                      <td>
+                        <div className="flex justify-center gap-1">
+                          <button onClick={() => setModal(h)} className="btn-ghost text-xs py-1 px-2">
+                            <i className="fa fa-edit" />
+                          </button>
+                          <button onClick={() => setConfirm(h)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2">
+                            <i className="fa fa-trash-alt" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination footer */}
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              limit={PAGE_SIZE}
+              onChange={setPage}
+              isFetching={isFetching}
+            />
+          </>
         )}
       </div>
 

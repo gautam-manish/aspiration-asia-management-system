@@ -74,6 +74,10 @@ const querySchema = new mongoose.Schema(
       },
     ],
 
+    // ── Itinerary Includes / Excludes (free text) ──
+    itineraryIncludes: { type: String, trim: true, default: "" },
+    itineraryExcludes: { type: String, trim: true, default: "" },
+
     // ── Status ────────────────────────────────
     // Once set to 'cancelled' it cannot be reverted to 'confirmed'
     // (enforced at controller level)

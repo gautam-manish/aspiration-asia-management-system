@@ -179,3 +179,69 @@ export function HotelSearchSelect({ hotels = [], value = "", onSelect, onChange,
     </div>
   );
 }
+
+// ── Pagination Footer ──────────────────────────────────────────────
+// Drop-in pagination control shared by every list page that uses
+// backend pagination. Renders nothing when totalPages <= 1.
+//
+//   <Pagination page={page} totalPages={totalPages} total={total} limit={50}
+//               onChange={setPage} isFetching={isFetching} />
+export function Pagination({ page, totalPages, total, limit = 50, onChange, isFetching }) {
+  if (!totalPages || totalPages <= 1) return null;
+
+  const go = (n) => {
+    const next = Math.min(Math.max(1, n), totalPages);
+    if (next !== page) onChange(next);
+  };
+
+  // "Showing 1–50 of 234" (only when total + limit are provided)
+  const showRange = typeof total === "number" && total > 0;
+  const from = showRange ? (page - 1) * limit + 1 : null;
+  const to   = showRange ? Math.min(page * limit, total) : null;
+
+  return (
+    <div className="flex items-center justify-between gap-2 px-4 sm:px-6 py-3 border-t border-slate-100 text-sm text-slate-600 flex-wrap">
+      <span className="text-xs text-slate-400">
+        {showRange
+          ? <>Showing <span className="font-medium text-slate-600">{from.toLocaleString()}–{to.toLocaleString()}</span> of <span className="font-medium text-slate-600">{total.toLocaleString()}</span></>
+          : <>Page {page} of {totalPages}</>}
+        {isFetching ? " · refreshing…" : ""}
+      </span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => go(1)}
+          disabled={page === 1}
+          className="btn-ghost text-xs py-1 px-2 disabled:opacity-40"
+          title="First page"
+        >
+          <i className="fa fa-angle-double-left" />
+        </button>
+        <button
+          onClick={() => go(page - 1)}
+          disabled={page === 1}
+          className="btn-ghost text-xs py-1 px-2 disabled:opacity-40"
+        >
+          <i className="fa fa-angle-left" /> Prev
+        </button>
+        <span className="text-xs text-slate-500 px-2 whitespace-nowrap">
+          {page} / {totalPages}
+        </span>
+        <button
+          onClick={() => go(page + 1)}
+          disabled={page >= totalPages}
+          className="btn-ghost text-xs py-1 px-2 disabled:opacity-40"
+        >
+          Next <i className="fa fa-angle-right" />
+        </button>
+        <button
+          onClick={() => go(totalPages)}
+          disabled={page >= totalPages}
+          className="btn-ghost text-xs py-1 px-2 disabled:opacity-40"
+          title="Last page"
+        >
+          <i className="fa fa-angle-double-right" />
+        </button>
+      </div>
+    </div>
+  );
+}

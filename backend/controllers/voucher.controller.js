@@ -32,12 +32,14 @@ export const createVoucher = async (req, res) => {
 };
 
 // ─────────────────────────────────────────
-// @desc    Get All Vouchers (search by guest name or date)
-// @route   GET /api/vouchers?search=john&date=2024-01-01
+// @desc    Get All Vouchers (search by guest name or date).
+//          - GET /api/vouchers?search=&date=                  → returns ALL matching (back-compat)
+//          - GET /api/vouchers?search=&date=&page=1&limit=50  → paginated; envelope adds total/page/limit/totalPages
+// @route   GET /api/vouchers
 // ─────────────────────────────────────────
 export const getAllVouchers = async (req, res) => {
   try {
-    const { search, date } = req.query;
+    const { search, date, page, limit } = req.query;
     const query = {};
 
     if (search) {
@@ -52,9 +54,35 @@ export const getAllVouchers = async (req, res) => {
       query.createdAt = { $gte: start, $lte: end };
     }
 
-    const vouchers = await Voucher.find(query).sort({ createdAt: -1 });
+    const wantsPagination = page !== undefined || limit !== undefined;
 
-    res.status(200).json({ success: true, message: "Vouchers fetched successfully", data: vouchers });
+    if (!wantsPagination) {
+      const vouchers = await Voucher.find(query).sort({ createdAt: -1 });
+      return res.status(200).json({
+        success: true,
+        message: "Vouchers fetched successfully",
+        data: vouchers,
+      });
+    }
+
+    const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const [vouchers, total] = await Promise.all([
+      Voucher.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+      Voucher.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Vouchers fetched successfully",
+      data: vouchers,
+      total,
+      page:       pageNum,
+      limit:      limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message, data: null });
   }

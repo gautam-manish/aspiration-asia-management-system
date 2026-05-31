@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { cashReceiptAPI } from "../../api";
 import { formatDate, numberToWords, notifyError } from "../../utils/helpers";
-import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
+import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useCashReceipts, useCashReceiptMutations } from "../../hooks/useApiQueries";
+import { useCashReceiptsPaginated, useCashReceiptMutations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_FORM = {
@@ -88,15 +88,20 @@ export default function CashReceiptsPage() {
   const qc = useQueryClient();
   const [search, setSearch]     = useState("");
   const [date, setDate]         = useState("");
+  const [page, setPage]         = useState(1);
   const [modal, setModal]       = useState(false);
   const [confirm, setConfirm]   = useState(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  const { data: receipts = [], isLoading: loading, error } = useCashReceipts({
-    search: debouncedSearch,
-    date,
-  });
+  useEffect(() => { setPage(1); }, [debouncedSearch, date]);
+
+  const {
+    data: { receipts = [], total = 0, totalPages = 1 } = {},
+    isLoading: loading,
+    isFetching,
+    error,
+  } = useCashReceiptsPaginated({ search: debouncedSearch, date, page, limit: 50 });
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const { remove } = useCashReceiptMutations();
@@ -139,43 +144,50 @@ export default function CashReceiptsPage() {
             </div>
             {date && <button onClick={() => setDate("")} className="btn-ghost text-xs"><i className="fa fa-times" /> Clear</button>}
           </div>
-          <span className="text-sm text-slate-500">{receipts.length} receipts</span>
+          <span className="text-sm text-slate-500 ml-auto">
+            {total === 0
+              ? "No receipts"
+              : `${(page - 1) * 50 + 1}–${Math.min(page * 50, total)} of ${total} receipt${total !== 1 ? "s" : ""}`}
+          </span>
         </div>
 
         {loading ? <div className="p-8"><PageLoader /></div> : receipts.length === 0 ? (
           <Empty icon="fa-receipt" message="No cash receipts found" action={<button onClick={() => setModal(true)} className="btn-primary">Create first receipt</button>} />
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Reg. No.</th>
-                  <th>Date</th>
-                  <th>Received From</th>
-                  <th>Amount</th>
-                  <th>Ref / Cheque</th>
-                  <th className="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {receipts.map((r) => (
-                  <tr key={r._id}>
-                    <td><span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded">{r.registrationNumber || "—"}</span></td>
-                    <td className="text-slate-500 text-sm">{r.date || formatDate(r.createdAt)}</td>
-                    <td className="font-medium text-slate-800">{r.name}</td>
-                    <td className="font-semibold text-slate-800">Rs. {Number(r.amount).toLocaleString("en-IN")}</td>
-                    <td className="text-slate-500 text-sm">{r.cashChequeNo || "—"}</td>
-                    <td>
-                      <div className="flex justify-end gap-1">
-                        <Link to={`/cash-receipts/${r._id}`} className="btn-ghost text-xs py-1 px-2"><i className="fa fa-eye" /></Link>
-                        <button onClick={() => setConfirm(r)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2"><i className="fa fa-trash-alt" /></button>
-                      </div>
-                    </td>
+          <>
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Reg. No.</th>
+                    <th>Date</th>
+                    <th>Received From</th>
+                    <th>Amount</th>
+                    <th>Ref / Cheque</th>
+                    <th className="text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {receipts.map((r) => (
+                    <tr key={r._id}>
+                      <td><span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded">{r.registrationNumber || "—"}</span></td>
+                      <td className="text-slate-500 text-sm">{r.date || formatDate(r.createdAt)}</td>
+                      <td className="font-medium text-slate-800">{r.name}</td>
+                      <td className="font-semibold text-slate-800">Rs. {Number(r.amount).toLocaleString("en-IN")}</td>
+                      <td className="text-slate-500 text-sm">{r.cashChequeNo || "—"}</td>
+                      <td>
+                        <div className="flex justify-end gap-1">
+                          <Link to={`/cash-receipts/${r._id}`} className="btn-ghost text-xs py-1 px-2"><i className="fa fa-eye" /></Link>
+                          <button onClick={() => setConfirm(r)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2"><i className="fa fa-trash-alt" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination page={page} totalPages={totalPages} total={total} limit={50} onChange={setPage} isFetching={isFetching} />
+          </>
         )}
       </div>
 

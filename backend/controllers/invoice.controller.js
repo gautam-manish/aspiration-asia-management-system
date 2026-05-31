@@ -90,11 +90,13 @@ export const createInvoice = async (req, res) => {
 
 // ─────────────────────────────────────────
 // @desc    Get All Invoices
+//          - GET /api/invoices?search=&date=                  → ALL (back-compat)
+//          - GET /api/invoices?search=&page=1&limit=50        → paginated envelope
 // @route   GET /api/invoices?search=name&date=
 // ─────────────────────────────────────────
 export const getAllInvoices = async (req, res) => {
   try {
-    const { search, date } = req.query;
+    const { search, date, page, limit } = req.query;
     const query = {};
 
     if (search) {
@@ -111,8 +113,31 @@ export const getAllInvoices = async (req, res) => {
       query.createdAt = { $gte: start, $lte: end };
     }
 
-    const invoices = await Invoice.find(query).sort({ createdAt: -1 });
-    res.status(200).json({ success: true, message: "Invoices fetched successfully", data: invoices });
+    const wantsPagination = page !== undefined || limit !== undefined;
+
+    if (!wantsPagination) {
+      const invoices = await Invoice.find(query).sort({ createdAt: -1 });
+      return res.status(200).json({ success: true, message: "Invoices fetched successfully", data: invoices });
+    }
+
+    const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const [invoices, total] = await Promise.all([
+      Invoice.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+      Invoice.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Invoices fetched successfully",
+      data: invoices,
+      total,
+      page:       pageNum,
+      limit:      limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message, data: null });
   }

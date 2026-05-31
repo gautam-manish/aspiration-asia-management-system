@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { cashReceiptAPI } from "../../api";
-import { getError, formatDate, numberToWords } from "../../utils/helpers";
+import { formatDate, numberToWords, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useCashReceipts, useCashReceiptMutations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_FORM = {
@@ -30,7 +33,7 @@ function CashReceiptModal({ onClose, onSaved }) {
       toast.success("Cash receipt created");
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -82,40 +85,31 @@ function CashReceiptModal({ onClose, onSaved }) {
 }
 
 export default function CashReceiptsPage() {
-  const [receipts, setReceipts] = useState([]);
+  const qc = useQueryClient();
   const [search, setSearch]     = useState("");
   const [date, setDate]         = useState("");
-  const [loading, setLoading]   = useState(true);
   const [modal, setModal]       = useState(false);
   const [confirm, setConfirm]   = useState(null);
-  const [deleting, setDeleting] = useState(false);
 
-  const fetchReceipts = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await cashReceiptAPI.getAll({ search, date });
-      setReceipts(data.data || []);
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [search, date]);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  useEffect(() => { fetchReceipts(); }, [fetchReceipts]);
+  const { data: receipts = [], isLoading: loading, error } = useCashReceipts({
+    search: debouncedSearch,
+    date,
+  });
+  useEffect(() => { if (error) notifyError(error); }, [error]);
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await cashReceiptAPI.remove(confirm._id);
-      toast.success("Receipt deleted");
-      setConfirm(null);
-      fetchReceipts();
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setDeleting(false);
-    }
+  const { remove } = useCashReceiptMutations();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["cash-receipts"] });
+
+  const handleDelete = () => {
+    remove.mutate(confirm._id, {
+      onSuccess: () => {
+        toast.success("Receipt deleted");
+        setConfirm(null);
+      },
+      onError: (err) => notifyError(err),
+    });
   };
 
   return (
@@ -188,7 +182,7 @@ export default function CashReceiptsPage() {
       {modal && (
         <CashReceiptModal
           onClose={() => setModal(false)}
-          onSaved={() => { setModal(false); fetchReceipts(); }}
+          onSaved={() => { setModal(false); refresh(); }}
         />
       )}
 
@@ -198,7 +192,7 @@ export default function CashReceiptsPage() {
         message={`Delete receipt for "${confirm?.name}"? This cannot be undone.`}
         onConfirm={handleDelete}
         onCancel={() => setConfirm(null)}
-        loading={deleting}
+        loading={remove.isPending}
       />
     </div>
   );

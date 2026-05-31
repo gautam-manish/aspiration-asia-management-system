@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { bookingAPI, sundryAPI } from "../../api";
-import { getError, formatDate } from "../../utils/helpers";
+import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, StatusBadge, Field, ConfirmModal } from "../../components/common";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useQueryClient } from "@tanstack/react-query";
+import { useBookings, useBookingMutations, useSundryDropdown } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_FORM = {
@@ -27,21 +30,13 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
   const isEdit = !!booking;
   const [form, setForm] = useState(isEdit ? { ...booking } : { ...EMPTY_FORM, queryId: nextId });
   const [loading, setLoading] = useState(false);
-  const [creditors, setCreditors] = useState([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [clientSearch, setClientSearch] = useState("");
 
   const wasCancelled = isEdit && booking?.status === "cancelled";
 
-  /* load creditors for dropdown */
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await sundryAPI.getDropdown({ type: "creditor" });
-        setCreditors(data.data || []);
-      } catch { /* silently ignore */ }
-    })();
-  }, []);
+  // Cached creditor dropdown — fetched once, reused on every modal open.
+  const { data: creditors = [] } = useSundryDropdown({ type: "creditor" });
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -88,7 +83,7 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
       toast.success(`Booking ${isEdit ? "updated" : "created"}`);
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -241,28 +236,26 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
 
 export default function BookingsPage() {
   const navigate = useNavigate();
-  const [bookings, setBookings] = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const qc = useQueryClient();
   const [status, setStatus]     = useState("confirmed");
   const [search, setSearch]     = useState("");
   const [modal, setModal]       = useState(null);
   const [nextId, setNextId]     = useState("");
   const [cancelTarget, setCancelTarget] = useState(null);
-  const [cancelling, setCancelling]     = useState(false);
 
-  const fetchBookings = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await bookingAPI.getAll({ status, search });
-      setBookings(data.data || []);
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [status, search]);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  useEffect(() => { fetchBookings(); }, [fetchBookings]);
+  // ── Data ──────────────────────────────────────────────────────────────
+  const { data: bookings = [], isLoading: loading, error } = useBookings({
+    status,
+    search: debouncedSearch,
+  });
+  useEffect(() => { if (error) notifyError(error); }, [error]);
+
+  const refreshBookings = () => qc.invalidateQueries({ queryKey: ["bookings"] });
+
+  // ── Mutations ─────────────────────────────────────────────────────────
+  const { updateStatus } = useBookingMutations();
 
   const openNew = async () => {
     try {
@@ -274,18 +267,17 @@ export default function BookingsPage() {
     }
   };
 
-  const handleCancel = async () => {
-    setCancelling(true);
-    try {
-      await bookingAPI.updateStatus(cancelTarget._id, "cancelled");
-      toast.success("Booking cancelled");
-      setCancelTarget(null);
-      fetchBookings();
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setCancelling(false);
-    }
+  const handleCancel = () => {
+    updateStatus.mutate(
+      { id: cancelTarget._id, status: "cancelled" },
+      {
+        onSuccess: () => {
+          toast.success("Booking cancelled");
+          setCancelTarget(null);
+        },
+        onError: (err) => notifyError(err),
+      }
+    );
   };
 
   return (
@@ -379,7 +371,7 @@ export default function BookingsPage() {
           booking={modal === "new" ? null : modal}
           nextId={nextId}
           onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); fetchBookings(); }}
+          onSaved={() => { setModal(null); refreshBookings(); }}
         />
       )}
 
@@ -389,7 +381,7 @@ export default function BookingsPage() {
         message={`Cancel booking ${cancelTarget?.queryId} for ${cancelTarget?.clientName}? This cannot be reversed.`}
         onConfirm={handleCancel}
         onCancel={() => setCancelTarget(null)}
-        loading={cancelling}
+        loading={updateStatus.isPending}
       />
     </div>
   );

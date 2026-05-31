@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { sundryAPI } from "../../api";
-import { getError } from "../../utils/helpers";
+import { notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useSundry } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const COUNTRIES = ["Nepal", "India", "Bhutan"];
@@ -50,7 +53,7 @@ function SundryModal({ entry, onClose, onSaved }) {
       toast.success(`Entry ${isEdit ? "updated" : "saved"} ✓`);
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -112,25 +115,19 @@ function SundryModal({ entry, onClose, onSaved }) {
 }
 
 export default function SundryPage() {
-  const navigate             = useNavigate();
-  const [entries,  setEntries]  = useState([]);
-  const [search,   setSearch]   = useState("");
-  const [loading,  setLoading]  = useState(true);
-  const [modal,    setModal]    = useState(null); // null | "add" | entry obj
+  const navigate                 = useNavigate();
+  const qc                       = useQueryClient();
+  const [search,   setSearch]    = useState("");
+  const [modal,    setModal]     = useState(null); // null | "add" | entry obj
 
-  const fetchEntries = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await sundryAPI.getAll({ search });
-      setEntries(data.data || []);
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [search]);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  useEffect(() => { fetchEntries(); }, [fetchEntries]);
+  const { data: entries = [], isLoading: loading, error } = useSundry({
+    search: debouncedSearch,
+  });
+  useEffect(() => { if (error) notifyError(error); }, [error]);
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["sundry"] });
 
   return (
     <div>
@@ -200,7 +197,7 @@ export default function SundryPage() {
         <SundryModal
           entry={modal === "add" ? null : modal}
           onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); fetchEntries(); }}
+          onSaved={() => { setModal(null); refresh(); }}
         />
       )}
     </div>

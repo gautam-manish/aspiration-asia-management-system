@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { purchaseRecordAPI } from "../../api";
-import { getError, formatDate } from "../../utils/helpers";
+import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
+import { usePurchaseRecord } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const fmt = (n) => Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -22,13 +24,14 @@ export default function PurchaseRecordDetailPage() {
   const [txn,        setTxn]        = useState({ date: "", refNo: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
   const [saving,     setSaving]     = useState(false);
 
-  const loadRecord = () =>
-    purchaseRecordAPI.getById(id)
-      .then(({ data }) => setRecord(data.data))
-      .catch((err) => toast.error(getError(err)))
-      .finally(() => setLoading(false));
+  const qc = useQueryClient();
+  const { data: recordData, isLoading: recordLoading, error: recordError } = usePurchaseRecord(id);
 
-  useEffect(() => { loadRecord(); }, [id]);
+  useEffect(() => { if (recordData) setRecord(recordData); }, [recordData]);
+  useEffect(() => { setLoading(recordLoading); }, [recordLoading]);
+  useEffect(() => { if (recordError) notifyError(recordError); }, [recordError]);
+
+  const loadRecord = () => qc.invalidateQueries({ queryKey: ["purchase-record", id] });
 
   const setT = (k, v) => setTxn((t) => ({ ...t, [k]: v }));
 
@@ -44,7 +47,7 @@ export default function PurchaseRecordDetailPage() {
       setTxn({ date: "", refNo: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
       loadRecord();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setSaving(false);
     }

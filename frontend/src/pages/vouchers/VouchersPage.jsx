@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { voucherAPI, bookingAPI, hotelAPI } from "../../api";
-import { getError, formatDate } from "../../utils/helpers";
+import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, Field, SectionTitle, HotelSearchSelect } from "../../components/common";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useVouchers, useHotels } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_ROOM = { roomCategory: "", noOfRooms: "", roomType: "" };
@@ -16,10 +19,7 @@ const EMPTY_HOTEL = {
 };
 
 function VoucherModal({ onClose, onSaved }) {
-  const [hotels, setHotels] = useState([]);
-  useEffect(() => {
-    hotelAPI.getAll().then(({ data }) => setHotels(data.data || [])).catch(() => {});
-  }, []);
+  const { data: hotels = [] } = useHotels();
 
   const [form, setForm] = useState({
     bookingId:"",
@@ -89,7 +89,7 @@ function VoucherModal({ onClose, onSaved }) {
       }));
       toast.success(`Booking ${b.queryId} loaded`);
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLookingUp(false);
     }
@@ -103,7 +103,7 @@ function VoucherModal({ onClose, onSaved }) {
       toast.success("Voucher created");
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -293,25 +293,20 @@ function VoucherModal({ onClose, onSaved }) {
 
 export default function VouchersPage() {
   const navigate = useNavigate();
-  const [list, setList]       = useState([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [search, setSearch]   = useState("");
   const [date, setDate]       = useState("");
   const [modal, setModal]     = useState(false);
 
-  const fetch = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await voucherAPI.getAll({ search, date });
-      setList(data.data || []);
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [search, date]);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  const { data: list = [], isLoading: loading, error } = useVouchers({
+    search: debouncedSearch,
+    date,
+  });
+  useEffect(() => { if (error) notifyError(error); }, [error]);
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["vouchers"] });
 
   return (
     <div>
@@ -370,7 +365,7 @@ export default function VouchersPage() {
         )}
       </div>
 
-      {modal && <VoucherModal onClose={() => setModal(false)} onSaved={() => { setModal(false); fetch(); }} />}
+      {modal && <VoucherModal onClose={() => setModal(false)} onSaved={() => { setModal(false); refresh(); }} />}
     </div>
   );
 }

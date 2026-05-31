@@ -63,4 +63,10 @@ const voucherSchema = new mongoose.Schema(
 );
 
 const Voucher = mongoose.model("Voucher", voucherSchema);
+
+// ── Indexes ───────────────────────────────────────────────────────────────
+voucherSchema.index({ guestName: 1 });
+voucherSchema.index({ bookingId: 1 });
+voucherSchema.index({ createdAt: -1 });
+
 export default Voucher;

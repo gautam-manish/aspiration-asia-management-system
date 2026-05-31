@@ -18,4 +18,9 @@ const cashReceiptSchema = new mongoose.Schema(
 );
 
 const CashReceipt = mongoose.model("CashReceipt", cashReceiptSchema);
+
+// ── Indexes ──────────────────────────────────────────────────────────────
+cashReceiptSchema.index({ name: 1 });
+cashReceiptSchema.index({ createdAt: -1 });
+
 export default CashReceipt;

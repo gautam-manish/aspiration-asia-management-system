@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { invoiceAPI, bookingAPI } from "../../api";
-import { getError, formatDate, todayString } from "../../utils/helpers";
+import { todayString, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useInvoices, useInvoiceMutations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_LINE = { description: "", details: "", qty: 1, rate: 0, amount: 0 };
@@ -72,7 +75,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
     if (isEdit) return;
     invoiceAPI.getNextNumber()
       .then(({ data }) => setForm((f) => ({ ...f, invoiceNumber: data?.data?.invoiceNumber || "" })))
-      .catch((err) => toast.error(getError(err)));
+      .catch((err) => notifyError(err));
   }, [isEdit]);
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -98,7 +101,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       }));
       toast.success(`Booking ${b.queryId} loaded`);
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLookingUp(false);
     }
@@ -152,7 +155,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       }
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -379,27 +382,31 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
 
 export default function InvoicesPage() {
   const navigate = useNavigate();
-  const [list, setList]       = useState([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [search, setSearch]   = useState("");
   const [date, setDate]       = useState("");
   const [modal, setModal]     = useState(false);
   const [confirm, setConfirm] = useState(null);
-  const [deleting, setDeleting] = useState(false);
 
-  const fetch = useCallback(async () => {
-    try { setLoading(true); const { data } = await invoiceAPI.getAll({ search, date }); setList(data.data || []); }
-    catch (err) { toast.error(getError(err)); }
-    finally { setLoading(false); }
-  }, [search, date]);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  const { data: list = [], isLoading: loading, error } = useInvoices({
+    search: debouncedSearch,
+    date,
+  });
+  useEffect(() => { if (error) notifyError(error); }, [error]);
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try { await invoiceAPI.remove(confirm._id); toast.success("Invoice deleted"); setConfirm(null); fetch(); }
-    catch (err) { toast.error(getError(err)); }
-    finally { setDeleting(false); }
+  const { remove } = useInvoiceMutations();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["invoices"] });
+
+  const handleDelete = () => {
+    remove.mutate(confirm._id, {
+      onSuccess: () => {
+        toast.success("Invoice deleted");
+        setConfirm(null);
+      },
+      onError: (err) => notifyError(err),
+    });
   };
 
   return (
@@ -452,9 +459,9 @@ export default function InvoicesPage() {
         )}
       </div>
 
-      {modal && <InvoiceModal onClose={() => setModal(false)} onSaved={() => { setModal(false); fetch(); }} />}
+      {modal && <InvoiceModal onClose={() => setModal(false)} onSaved={() => { setModal(false); refresh(); }} />}
       <ConfirmModal open={!!confirm} title="Delete Invoice" message={`Delete invoice ${confirm?.invoiceNumber}?`}
-        onConfirm={handleDelete} onCancel={() => setConfirm(null)} loading={deleting} />
+        onConfirm={handleDelete} onCancel={() => setConfirm(null)} loading={remove.isPending} />
     </div>
   );
 }

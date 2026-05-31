@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { clientAPI } from "../../api";
-import { getError, formatCurrency } from "../../utils/helpers";
+import { formatCurrency, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, ConfirmModal, Field, SearchBar } from "../../components/common";
+import { useClients, useClientMutations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_FORM = {
@@ -33,7 +35,7 @@ function ClientModal({ onClose, onSaved }) {
       toast.success("Client entry added");
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -93,39 +95,25 @@ function ClientModal({ onClose, onSaved }) {
 }
 
 export default function LedgerPage() {
-  const [clients, setClients]   = useState([]);
+  const qc = useQueryClient();
   const [search, setSearch]     = useState("");
-  const [loading, setLoading]   = useState(true);
   const [modal, setModal]       = useState(false);
   const [confirm, setConfirm]   = useState(null);
-  const [deleting, setDeleting] = useState(false);
 
-  const fetchClients = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await clientAPI.getAll();
-      setClients(data.data || []);
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data: clients = [], isLoading: loading, error } = useClients();
+  useEffect(() => { if (error) notifyError(error); }, [error]);
 
-  useEffect(() => { fetchClients(); }, [fetchClients]);
+  const { remove } = useClientMutations();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["clients"] });
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await clientAPI.remove(confirm._id);
-      toast.success("Entry deleted");
-      setConfirm(null);
-      fetchClients();
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setDeleting(false);
-    }
+  const handleDelete = () => {
+    remove.mutate(confirm._id, {
+      onSuccess: () => {
+        toast.success("Entry deleted");
+        setConfirm(null);
+      },
+      onError: (err) => notifyError(err),
+    });
   };
 
   const filtered = clients.filter((c) =>
@@ -225,7 +213,7 @@ export default function LedgerPage() {
       {modal && (
         <ClientModal
           onClose={() => setModal(false)}
-          onSaved={() => { setModal(false); fetchClients(); }}
+          onSaved={() => { setModal(false); refresh(); }}
         />
       )}
 
@@ -235,7 +223,7 @@ export default function LedgerPage() {
         message={`Remove ledger entry for "${confirm?.clientName}"? This cannot be undone.`}
         onConfirm={handleDelete}
         onCancel={() => setConfirm(null)}
-        loading={deleting}
+        loading={remove.isPending}
       />
     </div>
   );

@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { salesRecordAPI } from "../../api";
-import { getError, formatDate } from "../../utils/helpers";
+import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
+import { useSalesRecord } from "../../hooks/useApiQueries";
+import { SlipField } from "./SalesRecordsPage";
 import toast from "react-hot-toast";
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 
-const EMPTY_ENTRY = { referenceCode: "", amount: "", date: "" };
+const EMPTY_ENTRY = { referenceCode: "", amount: "", date: "", slip: null };
 
 function statusBadge(r) {
   const out = Number(r.outstandingBalance || 0);
@@ -27,17 +30,25 @@ export default function SalesRecordDetailPage() {
   const [entries, setEntries] = useState([]);
   const [saving,  setSaving]  = useState(false);
 
-  const loadRecord = () =>
-    salesRecordAPI.getById(id)
-      .then(({ data }) => {
-        setRecord(data.data);
-        setForm({ ...data.data });
-        setEntries((data.data.paymentEntries || []).map((e) => ({ ...e })));
-      })
-      .catch((err) => toast.error(getError(err)))
-      .finally(() => setLoading(false));
+  const qc = useQueryClient();
+  const { data: recordData, isLoading: recordLoading, error: recordError } = useSalesRecord(id);
 
-  useEffect(() => { loadRecord(); }, [id]);
+  useEffect(() => {
+    if (recordData) {
+      setRecord(recordData);
+      setForm({ ...recordData });
+      setEntries((recordData.paymentEntries || []).map((e) => ({
+        referenceCode: e.referenceCode || "",
+        amount:        e.amount != null ? String(e.amount) : "",
+        date:          e.date || "",
+        slip:          (e.slip && e.slip.url) ? { ...e.slip } : null,
+      })));
+    }
+  }, [recordData]);
+  useEffect(() => { setLoading(recordLoading); }, [recordLoading]);
+  useEffect(() => { if (recordError) notifyError(recordError); }, [recordError]);
+
+  const loadRecord = () => qc.invalidateQueries({ queryKey: ["sales-record", id] });
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -58,7 +69,7 @@ export default function SalesRecordDetailPage() {
       setEditing(false);
       loadRecord();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setSaving(false);
     }
@@ -86,7 +97,16 @@ export default function SalesRecordDetailPage() {
         </div>
         <div className="flex items-center gap-3">
           {statusBadge(record)}
-          <button onClick={() => { setForm({ ...record }); setEntries((record.paymentEntries || []).map((e) => ({ ...e }))); setEditing(true); }} className="btn-secondary">
+          <button onClick={() => {
+            setForm({ ...record });
+            setEntries((record.paymentEntries || []).map((e) => ({
+              referenceCode: e.referenceCode || "",
+              amount:        e.amount != null ? String(e.amount) : "",
+              date:          e.date || "",
+              slip:          (e.slip && e.slip.url) ? { ...e.slip } : null,
+            })));
+            setEditing(true);
+          }} className="btn-secondary">
             <i className="fa fa-edit" /> Edit
           </button>
         </div>
@@ -133,7 +153,7 @@ export default function SalesRecordDetailPage() {
         ) : (
           <div className="table-wrapper">
             <table className="table">
-              <thead><tr><th>#</th><th>Reference Code</th><th>Amount</th><th>Date</th></tr></thead>
+              <thead><tr><th>#</th><th>Reference Code</th><th>Amount</th><th>Date</th><th>Slip</th></tr></thead>
               <tbody>
                 {(record.paymentEntries || []).map((e, i) => (
                   <tr key={e._id || i}>
@@ -141,6 +161,14 @@ export default function SalesRecordDetailPage() {
                     <td className="font-mono text-sm">{e.referenceCode || "—"}</td>
                     <td className="font-semibold text-green-600">{fmt(e.amount)}</td>
                     <td className="text-slate-500 text-sm">{e.date || "—"}</td>
+                    <td className="text-sm">
+                      {e.slip?.url ? (
+                        <a href={e.slip.url} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline inline-flex items-center gap-1">
+                          <i className={`fa ${/^application\/pdf/.test(e.slip.mimeType) ? "fa-file-pdf" : "fa-file-image"}`} />
+                          {e.slip.fileName || "View"}
+                        </a>
+                      ) : <span className="text-slate-400">—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -191,11 +219,14 @@ export default function SalesRecordDetailPage() {
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2">Payment Entries</p>
                   <div className="space-y-2">
                     {entries.map((e, i) => (
-                      <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end bg-slate-50 border border-slate-200 rounded-xl p-3">
-                        <Field label="Ref. Code"><input className="input text-xs" value={e.referenceCode} onChange={(ev) => setEntry(i, "referenceCode", ev.target.value)} /></Field>
-                        <Field label="Amount"><input className="input text-xs" type="number" min="0" value={e.amount} onChange={(ev) => setEntry(i, "amount", ev.target.value)} /></Field>
-                        <Field label="Date"><input className="input text-xs" type="date" value={e.date} onChange={(ev) => setEntry(i, "date", ev.target.value)} /></Field>
-                        <button type="button" onClick={() => removeEntry(i)} className="btn-ghost text-red-400 hover:text-red-600 p-2 mb-0.5"><i className="fa fa-times text-xs" /></button>
+                      <div key={i} className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                        <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
+                          <Field label="Ref. Code"><input className="input text-xs" value={e.referenceCode} onChange={(ev) => setEntry(i, "referenceCode", ev.target.value)} /></Field>
+                          <Field label="Amount"><input className="input text-xs" type="number" min="0" value={e.amount} onChange={(ev) => setEntry(i, "amount", ev.target.value)} /></Field>
+                          <Field label="Date"><input className="input text-xs" type="date" value={e.date} onChange={(ev) => setEntry(i, "date", ev.target.value)} /></Field>
+                          <button type="button" onClick={() => removeEntry(i)} className="btn-ghost text-red-400 hover:text-red-600 p-2 mb-0.5"><i className="fa fa-times text-xs" /></button>
+                        </div>
+                        <SlipField slip={e.slip} onChange={(slip) => setEntry(i, "slip", slip)} />
                       </div>
                     ))}
                   </div>

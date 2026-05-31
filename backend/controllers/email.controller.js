@@ -3,13 +3,24 @@ import nodemailer from "nodemailer";
 const safe = (v) => (v === undefined || v === null || v === "") ? "" : String(v);
 
 // ── Shared Transporter ───────────────────────
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "manishgtm123@gmail.com",
-    pass: "dtrvlufskttkgxvl",
-  },
-});
+// Credentials must be supplied via environment variables. NEVER commit them.
+const MAIL_USER     = process.env.MAIL_USER;     // sending Gmail address
+const MAIL_PASS     = process.env.MAIL_PASS;     // Gmail "app password"
+const PACKAGE_TO    = process.env.MAIL_PACKAGE_TO || MAIL_USER; // where package-cost mails go
+
+let transporter = null;
+function getTransporter() {
+  if (!MAIL_USER || !MAIL_PASS) {
+    throw new Error("Mail is not configured (MAIL_USER / MAIL_PASS missing in environment)");
+  }
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: MAIL_USER, pass: MAIL_PASS },
+    });
+  }
+  return transporter;
+}
 
 // ─────────────────────────────────────────
 // @desc    Send Package Cost Email
@@ -96,17 +107,17 @@ export const sendPackageMail = async (req, res) => {
   </div>
 </div>`;
 
-    await transporter.sendMail({
-      from: "manishgtm123@gmail.com",
-      to: "manish.gtm222@gmail.com",
+    await getTransporter().sendMail({
+      from: MAIL_USER,
+      to: PACKAGE_TO,
       subject: "Package Cost",
       html,
     });
 
     res.status(200).json({ success: true, message: "Mail sent successfully" });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: "Error sending mail" });
+    console.error("[mail] sendPackageMail error:", error);
+    res.status(500).json({ success: false, message: error.message || "Error sending mail" });
   }
 };
 
@@ -167,16 +178,16 @@ export const sendReservationMail = async (req, res) => {
   </div>
 </div>`;
 
-    await transporter.sendMail({
-      from: "manishgtm123@gmail.com",
-      to: to.join(", "),
+    await getTransporter().sendMail({
+      from: MAIL_USER,
+      to: Array.isArray(to) ? to.join(", ") : to,
       subject: subject || "Hotel Reservation",
       html,
     });
 
     res.status(200).json({ success: true, message: "Reservation sent successfully" });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: "Error sending reservation" });
+    console.error("[mail] sendReservationMail error:", error);
+    res.status(500).json({ success: false, message: error.message || "Error sending reservation" });
   }
 };

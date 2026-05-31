@@ -12,9 +12,27 @@ export const formatCurrency = (amount, currency = "Rs.") => {
   return `${currency} ${Number(amount).toLocaleString("en-IN")}`;
 };
 
-// Get error message from axios error
-export const getError = (err) =>
-  err?.response?.data?.message || err?.message || "Something went wrong";
+// Get error message from axios error.
+// Returns null for cancelled / already-handled errors so callers can skip toasts.
+export const getError = (err) => {
+  if (!err) return "Something went wrong";
+  // Skip cancelled (StrictMode unmount, page navigation) and already-handled (401) errors.
+  if (err.__handled || err.code === "ERR_CANCELED" || err.name === "CanceledError") {
+    return null;
+  }
+  return err?.response?.data?.message || err?.message || "Something went wrong";
+};
+
+// Show an error toast only when there's a real, user-facing message.
+// Use everywhere instead of `toast.error(getError(err))` so cancelled/401 errors stay silent.
+// Lazy-imported to avoid a cyclic import with helpers used during boot.
+let _toast;
+export const notifyError = async (err) => {
+  const msg = getError(err);
+  if (!msg) return;
+  if (!_toast) _toast = (await import("react-hot-toast")).default;
+  _toast.error(msg);
+};
 
 // Truncate long text
 export const truncate = (str, n = 30) =>

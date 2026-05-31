@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { calculatorAPI } from "../../api";
-import { getError } from "../../utils/helpers";
+import { notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, ConfirmModal, Spinner } from "../../components/common";
+import { useCalculatorRecords } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -104,26 +106,16 @@ function AllowanceClient({ client, idx, onChange, onRemove }) {
 
 // ── Main page ────────────────────────────────────────────────────────
 export default function CalculatorPage() {
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [active, setActive]   = useState(null); // current working record
   const [saving, setSaving]   = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  const fetchAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await calculatorAPI.getAll();
-      setRecords(data.data || []);
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data: records = [], isLoading: loading, error } = useCalculatorRecords();
+  useEffect(() => { if (error) notifyError(error); }, [error]);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  const fetchAll = () => qc.invalidateQueries({ queryKey: ["calculator"] });
 
   // Recalculate totals whenever active changes
   const recalc = (rec) => {
@@ -169,7 +161,7 @@ export default function CalculatorPage() {
       fetchAll();
       setActive_(null);
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setSaving(false);
     }
@@ -184,7 +176,7 @@ export default function CalculatorPage() {
       fetchAll();
       if (active?._id === confirm._id) setActive_(null);
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setDeleting(false);
     }

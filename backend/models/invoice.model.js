@@ -72,4 +72,11 @@ const invoiceSchema = new mongoose.Schema(
 );
 
 const Invoice = mongoose.model("Invoice", invoiceSchema);
+
+// ── Indexes ──────────────────────────────────────────────────────────────
+// invoiceNumber is already unique-indexed via the field declaration.
+invoiceSchema.index({ "billTo.name": 1 });
+invoiceSchema.index({ bookingId: 1 });
+invoiceSchema.index({ createdAt: -1 });
+
 export default Invoice;

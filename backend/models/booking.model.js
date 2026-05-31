@@ -87,4 +87,11 @@ const querySchema = new mongoose.Schema(
 );
 
 const Booking = mongoose.model("Query", querySchema);
+
+// ── Indexes ───────────────────────────────────────────────────────────────
+// Speed up the common search filter: queryId / clientName / destination + sort.
+querySchema.index({ status: 1, createdAt: -1 });
+querySchema.index({ clientName: 1 });
+querySchema.index({ destination: 1 });
+
 export default Booking;

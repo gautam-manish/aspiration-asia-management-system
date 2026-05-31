@@ -20,6 +20,14 @@ const paymentEntrySchema = new mongoose.Schema(
       trim:    true,
       default: "",
     },
+    // ── Optional payment slip (PDF / JPG / JPEG) ──
+    // We store metadata only; the actual file lives on disk under /uploads.
+    slip: {
+      url:      { type: String, trim: true, default: "" }, // e.g. /uploads/payment-slips/abc.pdf
+      fileName: { type: String, trim: true, default: "" }, // original name from the user
+      mimeType: { type: String, trim: true, default: "" },
+      size:     { type: Number, default: 0 },              // bytes
+    },
   },
   { _id: true }
 );
@@ -95,4 +103,10 @@ salesRecordSchema.pre("save", function () {
 });
 
 const SalesRecord = mongoose.model("SalesRecord", salesRecordSchema);
+
+// ── Indexes ──────────────────────────────────────────────────────────────
+// invoiceNumber is already unique-indexed via the field declaration.
+salesRecordSchema.index({ clientName: 1 });
+salesRecordSchema.index({ createdAt: -1 });
+
 export default SalesRecord;

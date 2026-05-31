@@ -12,11 +12,26 @@ const ADMIN_USERNAME = "admin";
 // @access  Public
 // ─────────────────────────────────────────
 export const login = async (req, res) => {
-    let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
     try {
-        const { username, password } = req.body;
-        // console.log(ADMIN_PASSWORD);
+        const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+        const JWT_SECRET     = process.env.JWT_SECRET;
 
+        if (!JWT_SECRET) {
+            console.error("[auth] JWT_SECRET is not set in environment");
+            return res.status(500).json({
+                success: false,
+                message: "Server is not configured (missing JWT secret). Contact administrator.",
+            });
+        }
+        if (!ADMIN_PASSWORD) {
+            console.error("[auth] ADMIN_PASSWORD is not set in environment");
+            return res.status(500).json({
+                success: false,
+                message: "Server is not configured (missing admin password). Contact administrator.",
+            });
+        }
+
+        const { username, password } = req.body || {};
 
         if (!username || !password) {
             return res.status(400).json({
@@ -34,17 +49,18 @@ export const login = async (req, res) => {
 
         const token = jwt.sign(
             { username, role: "admin" },
-            process.env.JWT_SECRET,
+            JWT_SECRET,
             { expiresIn: "8h" }
         );
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: "Login successful",
             token,
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error("[auth] login error:", error);
+        return res.status(500).json({ success: false, message: error.message || "Login failed" });
     }
 };
 

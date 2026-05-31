@@ -1,14 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { purchaseRecordAPI, sundryAPI } from "../../api";
-import { getError } from "../../utils/helpers";
+import { notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
+import { usePurchaseRecords, usePurchaseRecordMutations, useSundry } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 
 function AddModal({ onClose, onSaved }) {
-  const [debtors,  setDebtors]  = useState([]);
+  // Cached sundry list — fetched once and reused on every modal open.
+  const { data: debtors = [] } = useSundry();
   const [query,    setQuery]    = useState("");
   const [selected, setSelected] = useState(null);
   const [showDrop, setShowDrop] = useState(false);
@@ -19,10 +22,6 @@ function AddModal({ onClose, onSaved }) {
   // null = unknown, false = no existing account (new ledger), object = existing.
   const [existing, setExisting] = useState(null);
   const [checking, setChecking] = useState(false);
-
-  useEffect(() => {
-    sundryAPI.getAll().then(({ data }) => setDebtors(data.data || [])).catch(() => {});
-  }, []);
 
   const filtered = debtors.filter((d) =>
     d.contactPerson.toLowerCase().includes(query.toLowerCase()) ||
@@ -86,7 +85,7 @@ function AddModal({ onClose, onSaved }) {
       toast.success(existing ? "Entry added to existing ledger ✓" : "New ledger created ✓");
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -235,46 +234,32 @@ function AddModal({ onClose, onSaved }) {
 
 export default function PurchaseRecordsPage() {
   const navigate             = useNavigate();
-  const [records,  setRecords]  = useState([]);
-  const [allRecs,  setAllRecs]  = useState([]);
+  const qc                   = useQueryClient();
   const [search,   setSearch]   = useState("");
-  const [loading,  setLoading]  = useState(true);
   const [modal,    setModal]    = useState(false);
   const [confirm,  setConfirm]  = useState(null);
-  const [deleting, setDeleting] = useState(false);
 
-  const fetchRecords = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await purchaseRecordAPI.getAll();
-      setAllRecs(data.data || []);
-      setRecords(data.data || []);
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Fetch the full list once and filter locally — same behavior as before.
+  const { data: allRecs = [], isLoading: loading, error } = usePurchaseRecords();
+  useEffect(() => { if (error) notifyError(error); }, [error]);
 
-  useEffect(() => { fetchRecords(); }, [fetchRecords]);
-
-  useEffect(() => {
-    if (!search.trim()) { setRecords(allRecs); return; }
-    setRecords(allRecs.filter((r) => r.debtorName.toLowerCase().includes(search.toLowerCase())));
+  const records = useMemo(() => {
+    if (!search.trim()) return allRecs;
+    const q = search.toLowerCase();
+    return allRecs.filter((r) => r.debtorName.toLowerCase().includes(q));
   }, [search, allRecs]);
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await purchaseRecordAPI.remove(confirm._id);
-      toast.success("Record deleted");
-      setConfirm(null);
-      fetchRecords();
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setDeleting(false);
-    }
+  const { remove } = usePurchaseRecordMutations();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["purchase-records"] });
+
+  const handleDelete = () => {
+    remove.mutate(confirm._id, {
+      onSuccess: () => {
+        toast.success("Record deleted");
+        setConfirm(null);
+      },
+      onError: (err) => notifyError(err),
+    });
   };
 
   const totalDR = records.reduce((s, r) => s + (Number(r.totalDebit) || 0), 0);
@@ -293,7 +278,7 @@ export default function PurchaseRecordsPage() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Debtors</p><p className="text-2xl font-bold text-slate-800">{records.length}</p></div>
         <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Debit (DR)</p><p className="text-xl font-bold text-red-600">{fmt(totalDR)}</p></div>
         <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Credit (CR)</p><p className="text-xl font-bold text-green-600">{fmt(totalCR)}</p></div>
@@ -360,7 +345,7 @@ export default function PurchaseRecordsPage() {
         )}
       </div>
 
-      {modal && <AddModal onClose={() => setModal(false)} onSaved={() => { setModal(false); fetchRecords(); }} />}
+      {modal && <AddModal onClose={() => setModal(false)} onSaved={() => { setModal(false); refresh(); }} />}
 
       <ConfirmModal
         open={!!confirm}
@@ -368,7 +353,7 @@ export default function PurchaseRecordsPage() {
         message={`Delete all ledger data for "${confirm?.debtorName}"? This cannot be undone.`}
         onConfirm={handleDelete}
         onCancel={() => setConfirm(null)}
-        loading={deleting}
+        loading={remove.isPending}
       />
     </div>
   );

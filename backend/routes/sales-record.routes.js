@@ -3,9 +3,13 @@ import {
   createSalesRecord,
   getAllSalesRecords,
   getSalesRecordById,
+  getSalesRecordByInvoiceNumber,
   updateSalesRecord,
   deleteSalesRecord,
+  uploadPaymentSlip,
+  removePaymentSlip,
 } from "../controllers/sales-record.controller.js";
+import { uploadPaymentSlip as uploadMiddleware } from "../middleware/upload.middleware.js";
 
 const router = express.Router();
 
@@ -13,6 +17,28 @@ const router = express.Router();
 // Base Route: /api/salesrecords
 // ─────────────────────────────────────────
 
+router.route("/by-invoice/:invoiceNumber").get(getSalesRecordByInvoiceNumber);
+
+// Upload route: wrap multer to convert validation errors into JSON 400s instead
+// of bubbling up to the default Express HTML error page.
+router.post(
+  "/upload-slip",
+  (req, res, next) => {
+    uploadMiddleware.single("slip")(req, res, (err) => {
+      if (err) {
+        const code = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+        const msg  = err.code === "LIMIT_FILE_SIZE"
+          ? "File is too large (max 5 MB)"
+          : err.message || "Upload failed";
+        return res.status(code).json({ success: false, message: msg, data: null });
+      }
+      next();
+    });
+  },
+  uploadPaymentSlip
+);
+
+router.route("/slip").delete(removePaymentSlip);
 router.route("/").get(getAllSalesRecords).post(createSalesRecord);
 
 router

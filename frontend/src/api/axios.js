@@ -3,6 +3,8 @@ import axios from "axios";
 const api = axios.create({
   baseURL: "/api",
   headers: { "Content-Type": "application/json" },
+  // Reasonable network timeout so a stuck request doesn't hang the UI forever
+  timeout: 30_000,
 });
 
 // Attach token from localStorage on every request
@@ -12,13 +14,34 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Redirect to login on 401
+// Response interceptor — handle session expiry without breaking page state
+let isRedirecting = false;
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem("token");
-      window.location.href = "/login";
+    // Cancelled requests (component unmount, fast nav) — never surface to the user
+    if (axios.isCancel?.(err) || err?.code === "ERR_CANCELED") {
+      err.__handled = true;
+      return Promise.reject(err);
+    }
+
+    const url = err?.config?.url || "";
+    const isLoginRequest = /\/auth\/login\b/.test(url);
+
+    if (err?.response?.status === 401 && !isLoginRequest) {
+      // Mark so page-level catch blocks can skip noisy toasts
+      err.__handled = true;
+      // Avoid redirect loops if multiple 401s land at once
+      if (!isRedirecting) {
+        isRedirecting = true;
+        localStorage.removeItem("token");
+        // Use SPA navigation when possible, fall back to full reload only
+        // when we're not already on /login (prevents the "needs reload twice" bug).
+        if (!window.location.pathname.startsWith("/login")) {
+          window.location.replace("/login");
+        }
+      }
     }
     return Promise.reject(err);
   }

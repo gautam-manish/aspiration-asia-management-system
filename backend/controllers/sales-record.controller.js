@@ -1,4 +1,7 @@
 import SalesRecord from "../models/sales-record.model.js";
+import fs from "fs";
+import path from "path";
+import { UPLOAD_ROOT } from "../middleware/upload.middleware.js";
 
 // ─────────────────────────────────────────
 //  Helper: sanitise payment entries array
@@ -9,6 +12,16 @@ const sanitiseEntries = (entries) => {
     referenceCode: (e.referenceCode || "").trim(),
     amount:        Math.max(0, Number(e.amount) || 0),
     date:          (e.date || "").trim(),
+    // Preserve the slip metadata exactly as the client sent it. The actual
+    // bytes were already uploaded via the dedicated upload endpoint.
+    slip: e.slip && e.slip.url
+      ? {
+          url:      String(e.slip.url      || "").trim(),
+          fileName: String(e.slip.fileName || "").trim(),
+          mimeType: String(e.slip.mimeType || "").trim(),
+          size:     Number(e.slip.size)    || 0,
+        }
+      : { url: "", fileName: "", mimeType: "", size: 0 },
   }));
 };
 
@@ -108,6 +121,28 @@ export const getSalesRecordById = async (req, res) => {
 };
 
 // ─────────────────────────────────────────
+// @desc    Get Sales Record by Invoice Number (case-insensitive exact match)
+// @route   GET /api/salesrecords/by-invoice/:invoiceNumber
+// ─────────────────────────────────────────
+export const getSalesRecordByInvoiceNumber = async (req, res) => {
+  try {
+    const invoiceNumber = (req.params.invoiceNumber || "").trim();
+    if (!invoiceNumber) {
+      return res.status(400).json({ success: false, message: "Invoice number is required", data: null });
+    }
+    const record = await SalesRecord.findOne({
+      invoiceNumber: invoiceNumber.toUpperCase(),
+    });
+    if (!record) {
+      return res.status(404).json({ success: false, message: "No sales record for this invoice", data: null });
+    }
+    res.status(200).json({ success: true, message: "Sales record fetched successfully", data: record });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message, data: null });
+  }
+};
+
+// ─────────────────────────────────────────
 // @desc    Update Sales Record by ID
 //          invoiceNumber is immutable — ignored if sent
 // @route   PUT /api/salesrecords/:id
@@ -169,5 +204,54 @@ export const deleteSalesRecord = async (req, res) => {
     res.status(200).json({ success: true, message: "Sales record deleted successfully", data: null });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message, data: null });
+  }
+};
+
+// ─────────────────────────────────────────
+// @desc    Upload Payment Slip (PDF / JPG / JPEG)
+// @route   POST /api/salesrecords/upload-slip   (multipart/form-data, field: "slip")
+//
+// Stores the file on disk under /uploads/payment-slips/ and returns its
+// public URL + metadata. The frontend then attaches that metadata to the
+// matching paymentEntry when it saves the sales record.
+// ─────────────────────────────────────────
+export const uploadPaymentSlip = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded", data: null });
+    }
+    const url = `/uploads/payment-slips/${req.file.filename}`;
+    return res.status(201).json({
+      success: true,
+      message: "Payment slip uploaded successfully",
+      data: {
+        url,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size:     req.file.size,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message, data: null });
+  }
+};
+
+// ─────────────────────────────────────────
+// @desc    Delete a previously-uploaded payment slip from disk.
+//          Used when the user removes a slip from a payment entry.
+// @route   DELETE /api/salesrecords/slip?url=/uploads/payment-slips/abc.pdf
+// ─────────────────────────────────────────
+export const removePaymentSlip = async (req, res) => {
+  try {
+    const url = (req.query.url || "").trim();
+    if (!url || !url.startsWith("/uploads/payment-slips/")) {
+      return res.status(400).json({ success: false, message: "Invalid slip url", data: null });
+    }
+    const filename = path.basename(url); // strip dirs to prevent traversal
+    const filePath = path.join(UPLOAD_ROOT, filename);
+    fs.promises.unlink(filePath).catch(() => { /* file may already be gone */ });
+    return res.status(200).json({ success: true, message: "Slip removed", data: null });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message, data: null });
   }
 };

@@ -142,4 +142,9 @@ purchaseRecordSchema.pre("save", function () {
 });
 
 const PurchaseRecord = mongoose.model("PurchaseRecord", purchaseRecordSchema);
+
+// ── Indexes ──────────────────────────────────────────────────────────────
+// debtorName is already unique-indexed via the field declaration.
+purchaseRecordSchema.index({ createdAt: -1 });
+
 export default PurchaseRecord;

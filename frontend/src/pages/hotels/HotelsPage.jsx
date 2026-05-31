@@ -1,7 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { hotelAPI } from "../../api";
-import { getError, formatCurrency } from "../../utils/helpers";
+import { formatCurrency, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useHotels, useHotelMutations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const MEAL_PLANS = ["EP", "CP", "MAP", "AP", "JP"];
@@ -40,7 +43,7 @@ function HotelModal({ hotel, onClose, onSaved }) {
       toast.success(`Hotel ${isEdit ? "updated" : "created"} successfully`);
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -166,41 +169,34 @@ function HotelModal({ hotel, onClose, onSaved }) {
 }
 
 export default function HotelsPage() {
-  const [hotels, setHotels]   = useState([]);
+  const qc = useQueryClient();
   const [search, setSearch]   = useState("");
-  const [loading, setLoading] = useState(true);
   const [modal, setModal]     = useState(null); // null | "add" | hotel obj
   const [confirm, setConfirm] = useState(null);
-  const [deleting, setDeleting] = useState(false);
 
-  const fetchHotels = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await hotelAPI.getAll(search);
-      const list = data.data || [];
-      list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-      setHotels(list);
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [search]);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  useEffect(() => { fetchHotels(); }, [fetchHotels]);
+  const { data: rawHotels = [], isLoading: loading, error } = useHotels(debouncedSearch);
+  useEffect(() => { if (error) notifyError(error); }, [error]);
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await hotelAPI.remove(confirm._id);
-      toast.success("Hotel deleted");
-      setConfirm(null);
-      fetchHotels();
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setDeleting(false);
-    }
+  // Sort once per data change
+  const hotels = useMemo(() => {
+    return [...rawHotels].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+    );
+  }, [rawHotels]);
+
+  const { remove } = useHotelMutations();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["hotels"] });
+
+  const handleDelete = () => {
+    remove.mutate(confirm._id, {
+      onSuccess: () => {
+        toast.success("Hotel deleted");
+        setConfirm(null);
+      },
+      onError: (err) => notifyError(err),
+    });
   };
 
   return (
@@ -271,7 +267,7 @@ export default function HotelsPage() {
         <HotelModal
           hotel={modal === "add" ? null : modal}
           onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); fetchHotels(); }}
+          onSaved={() => { setModal(null); refresh(); }}
         />
       )}
 
@@ -281,7 +277,7 @@ export default function HotelsPage() {
         message={`Delete "${confirm?.name}"? This cannot be undone.`}
         onConfirm={handleDelete}
         onCancel={() => setConfirm(null)}
-        loading={deleting}
+        loading={remove.isPending}
       />
     </div>
   );

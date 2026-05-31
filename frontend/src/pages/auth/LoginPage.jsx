@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { getError } from "../../utils/helpers";
+import { getError , notifyError} from "../../utils/helpers";
 import { Spinner } from "../../components/common";
 import toast from "react-hot-toast";
 
@@ -20,7 +20,7 @@ export default function LoginPage() {
       toast.success("Welcome back!");
       navigate("/");
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }

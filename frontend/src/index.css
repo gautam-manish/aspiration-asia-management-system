@@ -33,6 +33,13 @@
   .input {
     @apply w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white placeholder:text-slate-400
            focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all;
+    /* Prevent iOS Safari from auto-zooming when focusing inputs (fires when font-size < 16px) */
+    font-size: 16px;
+  }
+  @screen sm {
+    .input {
+      font-size: 0.875rem;
+    }
   }
   .label {
     @apply block text-xs font-medium text-slate-600 mb-1;
@@ -43,10 +50,10 @@
     @apply bg-white rounded-xl border border-slate-200 shadow-sm;
   }
   .card-header {
-    @apply px-6 py-4 border-b border-slate-100 flex items-center justify-between;
+    @apply px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2;
   }
   .card-body {
-    @apply px-6 py-4;
+    @apply px-4 sm:px-6 py-4;
   }
 
   /* ── Table ───────────────────────────────────── */
@@ -81,30 +88,31 @@
 
   /* ── Page ────────────────────────────────────── */
   .page-header {
-    @apply flex items-center justify-between mb-6;
+    @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 sm:mb-6;
   }
   .page-title {
-    @apply text-2xl font-display font-semibold text-slate-800;
+    @apply text-xl sm:text-2xl font-display font-semibold text-slate-800;
   }
   .page-subtitle {
-    @apply text-sm text-slate-500 mt-0.5;
+    @apply text-xs sm:text-sm text-slate-500 mt-0.5;
   }
 
   /* ── Modal ───────────────────────────────────── */
   .modal-overlay {
-    @apply fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4;
+    @apply fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4;
   }
   .modal {
-    @apply bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto;
+    @apply bg-white w-full max-w-lg max-h-[95vh] sm:max-h-[90vh] overflow-y-auto
+           rounded-t-2xl sm:rounded-2xl shadow-2xl;
   }
   .modal-header {
-    @apply flex items-center justify-between px-6 py-4 border-b border-slate-100;
+    @apply flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 sticky top-0 bg-white z-10;
   }
   .modal-body {
-    @apply px-6 py-5;
+    @apply px-4 sm:px-6 py-4 sm:py-5;
   }
   .modal-footer {
-    @apply flex justify-end gap-3 px-6 py-4 border-t border-slate-100;
+    @apply flex justify-end gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100 sticky bottom-0 bg-white z-10;
   }
 }
 

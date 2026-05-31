@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { hotelAPI } from "../../api";
-import { getError } from "../../utils/helpers";
+import { notifyError } from "../../utils/helpers";
 import { Field } from "../../components/common";
+import { useHotels } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 import axios from "axios";
 
@@ -15,7 +16,8 @@ function calcRow(r) {
 }
 
 export default function PackageCostPage() {
-  const [hotels,  setHotels]  = useState([]);
+  // Cached hotels list — same hook used by VouchersPage / VoucherDetailPage.
+  const { data: hotels = [] } = useHotels();
   const [rows,    setRows]    = useState([{ ...EMPTY_ROW }]);
   const [sending, setSending] = useState(false);
 
@@ -34,10 +36,6 @@ export default function PackageCostPage() {
     flightDomestic: 0, otherServices: 0,
   });
   const [miscLabel, setMiscLabel] = useState("Other Services");
-
-  useEffect(() => {
-    hotelAPI.getAll().then(({ data }) => setHotels(data.data || [])).catch(() => {});
-  }, []);
 
   // ── helpers ──────────────────────────────────────────────────────
   const setA = (k, v) => setAgency((a) => ({ ...a, [k]: v }));
@@ -97,7 +95,7 @@ export default function PackageCostPage() {
       );
       toast.success("Email sent ✓");
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setSending(false);
     }

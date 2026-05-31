@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useReactToPrint } from "react-to-print";
+import { useQueryClient } from "@tanstack/react-query";
 import { reservationAPI } from "../../api";
-import { getError, formatDate } from "../../utils/helpers";
+import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, Field, SectionTitle } from "../../components/common";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useReservations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_FORM = {
@@ -31,7 +34,7 @@ function ReservationModal({ onClose, onSaved }) {
       toast.success("Reservation created & email sent");
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -174,8 +177,7 @@ function PrintView({ reservation }) {
 }
 
 export default function ReservationsPage() {
-  const [list, setList]       = useState([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [search, setSearch]   = useState("");
   const [date, setDate]       = useState("");
   const [modal, setModal]     = useState(false);
@@ -184,19 +186,15 @@ export default function ReservationsPage() {
 
   const handlePrint = useReactToPrint({ content: () => printRef.current });
 
-  const fetch = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await reservationAPI.getAll({ search, date });
-      setList(data.data || []);
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [search, date]);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  const { data: list = [], isLoading: loading, error } = useReservations({
+    search: debouncedSearch,
+    date,
+  });
+  useEffect(() => { if (error) notifyError(error); }, [error]);
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["reservations"] });
 
   const triggerPrint = (r) => {
     setPrintData(r);
@@ -267,7 +265,7 @@ export default function ReservationsPage() {
         )}
       </div>
 
-      {modal && <ReservationModal onClose={() => setModal(false)} onSaved={() => { setModal(false); fetch(); }} />}
+      {modal && <ReservationModal onClose={() => setModal(false)} onSaved={() => { setModal(false); refresh(); }} />}
     </div>
   );
 }

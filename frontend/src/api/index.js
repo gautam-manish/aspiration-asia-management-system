@@ -97,11 +97,20 @@ export const sundryAPI = {
 
 // ── Sales Records ───────────────────────────────────────────────────
 export const salesRecordAPI = {
-  getAll:  (params)   => api.get("/salesrecords", { params }),
-  getById: (id)       => api.get(`/salesrecords/${id}`),
-  create:  (data)     => api.post("/salesrecords", data),
-  update:  (id, data) => api.put(`/salesrecords/${id}`, data),
-  remove:  (id)       => api.delete(`/salesrecords/${id}`),
+  getAll:             (params)   => api.get("/salesrecords", { params }),
+  getById:            (id)       => api.get(`/salesrecords/${id}`),
+  getByInvoiceNumber: (num)      => api.get(`/salesrecords/by-invoice/${encodeURIComponent(num)}`),
+  create:             (data)     => api.post("/salesrecords", data),
+  update:             (id, data) => api.put(`/salesrecords/${id}`, data),
+  remove:             (id)       => api.delete(`/salesrecords/${id}`),
+  uploadSlip:         (file)     => {
+    const fd = new FormData();
+    fd.append("slip", file, file.name);
+    return api.post("/salesrecords/upload-slip", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  removeSlip:         (url)      => api.delete(`/salesrecords/slip?url=${encodeURIComponent(url)}`),
 };
 
 // ── Purchase Records ────────────────────────────────────────────────

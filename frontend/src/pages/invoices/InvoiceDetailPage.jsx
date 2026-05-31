@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { invoiceAPI } from "../../api";
-import { getError, numberToWords } from "../../utils/helpers";
+import { numberToWords, notifyError } from "../../utils/helpers";
 import { PageLoader } from "../../components/common";
 import { InvoiceModal } from "./InvoicesPage";
+import { useInvoice } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 // ─── Exact original invoice preview template ─────────────────────────────────
@@ -192,13 +194,14 @@ export default function InvoiceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
 
-  const loadInvoice = () =>
-    invoiceAPI.getById(id)
-      .then(({ data }) => setInv(data.data))
-      .catch((err) => toast.error(getError(err)))
-      .finally(() => setLoading(false));
+  const qc = useQueryClient();
+  const { data: invData, isLoading: invLoading, error: invError } = useInvoice(id);
 
-  useEffect(() => { loadInvoice(); }, [id]);
+  useEffect(() => { if (invData) setInv(invData); }, [invData]);
+  useEffect(() => { setLoading(invLoading); }, [invLoading]);
+  useEffect(() => { if (invError) notifyError(invError); }, [invError]);
+
+  const loadInvoice = () => qc.invalidateQueries({ queryKey: ["invoice", id] });
 
   // Same print mechanic as original
   const handlePrint = () => {

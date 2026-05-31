@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { voucherAPI, hotelAPI, bookingAPI } from "../../api";
-import { getError } from "../../utils/helpers";
+import { getError, notifyError } from "../../utils/helpers";
 import { PageLoader, Field, HotelSearchSelect } from "../../components/common";
+import { useVoucher, useHotels } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const ensureUrl = (url = "") => {
@@ -314,7 +316,7 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
       }));
       toast.success(`Booking ${b.queryId} loaded`);
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLookingUp(false);
     }
@@ -399,7 +401,7 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
       toast.success("Voucher updated ✓");
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setSaving(false);
     }
@@ -575,16 +577,20 @@ export default function VoucherDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
 
-  const loadVoucher = () =>
-    voucherAPI.getById(id)
-      .then(({ data }) => setVoucher(data.data))
-      .catch((err) => toast.error(getError(err)))
-      .finally(() => setLoading(false));
+  const qc = useQueryClient();
+  const { data: voucherData, isLoading: voucherLoading, error: voucherError } = useVoucher(id);
+  const { data: hotelsData = [] } = useHotels();
 
+  // Sync the React-Query cached data into local state so the existing
+  // setVoucher(...) sites (after edit etc.) keep working.
   useEffect(() => {
-    loadVoucher();
-    hotelAPI.getAll().then(({ data }) => setHotels(data.data || [])).catch(() => {});
-  }, [id]);
+    if (voucherData) setVoucher(voucherData);
+  }, [voucherData]);
+  useEffect(() => { setHotels(hotelsData); }, [hotelsData]);
+  useEffect(() => { setLoading(voucherLoading); }, [voucherLoading]);
+  useEffect(() => { if (voucherError) notifyError(voucherError); }, [voucherError]);
+
+  const loadVoucher = () => qc.invalidateQueries({ queryKey: ["voucher", id] });
 
   // Same print mechanics as original — open new window, inject HTML, window.print()
   const handlePrint = () => {

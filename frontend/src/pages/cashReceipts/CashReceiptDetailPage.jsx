@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { cashReceiptAPI } from "../../api";
-import { getError } from "../../utils/helpers";
+import { notifyError } from "../../utils/helpers";
 import { PageLoader } from "../../components/common";
+import { useCashReceipt } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 // ─── Exact original receipt HTML template ────────────────────────────────────
@@ -107,12 +108,11 @@ export default function CashReceiptDetailPage() {
   const [receipt, setReceipt] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    cashReceiptAPI.getById(id)
-      .then(({ data }) => setReceipt(data.data))
-      .catch((err) => toast.error(getError(err)))
-      .finally(() => setLoading(false));
-  }, [id]);
+  const { data: receiptData, isLoading: receiptLoading, error: receiptError } = useCashReceipt(id);
+
+  useEffect(() => { if (receiptData) setReceipt(receiptData); }, [receiptData]);
+  useEffect(() => { setLoading(receiptLoading); }, [receiptLoading]);
+  useEffect(() => { if (receiptError) notifyError(receiptError); }, [receiptError]);
 
   // Same print mechanic as original — new window + window.print()
   const handlePrint = () => {

@@ -60,14 +60,14 @@ export function ConfirmModal({ open, title, message, onConfirm, onCancel, loadin
 // ── Search Bar ─────────────────────────────────────────────────────
 export function SearchBar({ value, onChange, placeholder = "Search…" }) {
   return (
-    <div className="relative">
+    <div className="relative w-full sm:w-64">
       <i className="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="input pl-9 w-64"
+        className="input pl-9 w-full"
       />
     </div>
   );

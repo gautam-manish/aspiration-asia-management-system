@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { salesRecordAPI, invoiceAPI } from "../../api";
-import { getError } from "../../utils/helpers";
+import { notifyError } from "../../utils/helpers";
+import { compressImageIfPossible } from "../../utils/compressImage";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field } from "../../components/common";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useSalesRecords, useSalesRecordMutations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -14,13 +18,99 @@ function statusBadge(r) {
   return <span className="badge badge-red">Unpaid</span>;
 }
 
-const EMPTY_ENTRY = { referenceCode: "", amount: "", date: "" };
+const EMPTY_ENTRY = { referenceCode: "", amount: "", date: "", slip: null };
+
+const ACCEPTED_TYPES = ".pdf,.jpg,.jpeg,application/pdf,image/jpeg";
+
+const fmtSize = (bytes) => {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+// ── Reusable Payment Slip Uploader ──────────────────────────────────
+// Used inside each payment-entry row. `slip` is { url, fileName, mimeType, size }
+// or null. `onChange(newSlip)` is called when the user uploads / removes.
+export function SlipField({ slip, onChange }) {
+  const [busy, setBusy] = useState(false);
+
+  const onPick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+
+    // Client-side validation (mirrors backend rules)
+    const ok = /\.(pdf|jpe?g)$/i.test(file.name) ||
+               /^application\/pdf$|^image\/jpeg$/i.test(file.type);
+    if (!ok) { toast.error("Only PDF, JPG, or JPEG files are allowed"); return; }
+
+    setBusy(true);
+    try {
+      // Compress JPEGs before upload to save bandwidth + disk space.
+      const toUpload = await compressImageIfPossible(file);
+      if (toUpload.size > 5 * 1024 * 1024) {
+        toast.error("File is too large (max 5 MB after compression)");
+        return;
+      }
+      const { data } = await salesRecordAPI.uploadSlip(toUpload);
+      onChange(data?.data || null);
+      toast.success("Slip uploaded ✓");
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRemove = async () => {
+    if (!slip?.url) { onChange(null); return; }
+    setBusy(true);
+    try {
+      await salesRecordAPI.removeSlip(slip.url);
+    } catch { /* file may already be gone — ignore */ }
+    finally { setBusy(false); }
+    onChange(null);
+  };
+
+  if (slip?.url) {
+    return (
+      <div className="flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+        <i className={`fa ${/^application\/pdf/.test(slip.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+        <a href={slip.url} target="_blank" rel="noreferrer" className="font-medium text-brand-700 truncate hover:underline" title={slip.fileName}>
+          {slip.fileName || "Slip"}
+        </a>
+        <span className="text-slate-400 ml-auto whitespace-nowrap">{fmtSize(slip.size)}</span>
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={busy}
+          className="btn-ghost text-red-400 hover:text-red-600 p-1"
+          title="Remove slip"
+        >
+          <i className="fa fa-times" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <label className={`flex items-center justify-center gap-2 text-xs border-2 border-dashed border-slate-300 rounded-lg px-2 py-1.5 cursor-pointer hover:border-brand-400 hover:bg-blue-50 transition-colors ${busy ? "opacity-50 pointer-events-none" : ""}`}>
+      <i className="fa fa-paperclip" />
+      <span>{busy ? "Uploading…" : "Attach slip (PDF / JPG)"}</span>
+      <input type="file" accept={ACCEPTED_TYPES} onChange={onPick} className="hidden" disabled={busy} />
+    </label>
+  );
+}
 
 function SalesModal({ onClose, onSaved }) {
   const [form, setForm]     = useState({ invoiceNumber: "", clientName: "", address: "", phone: "", email: "", totalAmount: "" });
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  // If the typed invoice number matches an EXISTING sales record, we capture
+  // its id here so submit performs an update instead of a create.
+  const [existingId, setExistingId] = useState(null);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const lookupInvoice = async () => {
@@ -28,8 +118,36 @@ function SalesModal({ onClose, onSaved }) {
     if (!num) { toast.error("Enter an invoice number first"); return; }
     setLookingUp(true);
     try {
+      // 1. Check if a sales record already exists for this invoice number.
+      try {
+        const { data } = await salesRecordAPI.getByInvoiceNumber(num);
+        const r = data.data;
+        setExistingId(r._id);
+        setForm({
+          invoiceNumber: r.invoiceNumber || num,
+          clientName:    r.clientName || "",
+          address:       r.address    || "",
+          phone:         r.phone      || "",
+          email:         r.email      || "",
+          totalAmount:   r.totalAmount != null ? String(r.totalAmount) : "",
+        });
+        setEntries((r.paymentEntries || []).map((e) => ({
+          referenceCode: e.referenceCode || "",
+          amount:        e.amount != null ? String(e.amount) : "",
+          date:          e.date || "",
+          slip:          (e.slip && e.slip.url) ? { ...e.slip } : null,
+        })));
+        toast.success(`Existing sales record loaded — switched to update mode`);
+        return;
+      } catch (err) {
+        // 404 = no sales record yet, fall through to invoice lookup
+        if (err?.response?.status !== 404) throw err;
+      }
+
+      // 2. No existing sales record: load from the underlying invoice instead.
       const { data } = await invoiceAPI.getByNumber(num);
       const inv = data.data;
+      setExistingId(null);
       setForm((f) => ({
         ...f,
         invoiceNumber: inv.invoiceNumber || num,
@@ -41,7 +159,7 @@ function SalesModal({ onClose, onSaved }) {
       }));
       toast.success(`Invoice ${inv.invoiceNumber} loaded`);
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLookingUp(false);
     }
@@ -60,11 +178,16 @@ function SalesModal({ onClose, onSaved }) {
     if (!form.clientName.trim())    { toast.error("Client name required"); return; }
     setLoading(true);
     try {
-      await salesRecordAPI.create({ ...form, paymentEntries: entries });
-      toast.success("Sales record created ✓");
+      if (existingId) {
+        await salesRecordAPI.update(existingId, { ...form, paymentEntries: entries });
+        toast.success("Sales record updated ✓");
+      } else {
+        await salesRecordAPI.create({ ...form, paymentEntries: entries });
+        toast.success("Sales record created ✓");
+      }
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -74,7 +197,7 @@ function SalesModal({ onClose, onSaved }) {
     <div className="modal-overlay">
       <div className="modal max-w-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="font-display font-semibold text-slate-800">New Sales Record</h2>
+          <h2 className="font-display font-semibold text-slate-800">{existingId ? "Update Sales Record" : "New Sales Record"}</h2>
           <button onClick={onClose} className="btn-ghost p-1"><i className="fa fa-times" /></button>
         </div>
         <form onSubmit={handleSubmit}>
@@ -87,7 +210,7 @@ function SalesModal({ onClose, onSaved }) {
                   <input
                     className="input flex-1"
                     value={form.invoiceNumber}
-                    onChange={(e) => set("invoiceNumber", e.target.value)}
+                    onChange={(e) => { set("invoiceNumber", e.target.value); setExistingId(null); }}
                     placeholder="e.g. ASA47821396"
                     required
                   />
@@ -143,11 +266,14 @@ function SalesModal({ onClose, onSaved }) {
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Payment Entries</p>
               <div className="space-y-2">
                 {entries.map((e, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end bg-slate-50 border border-slate-200 rounded-xl p-3">
-                    <Field label="Ref. Code"><input className="input text-xs" value={e.referenceCode} onChange={(ev) => setEntry(i, "referenceCode", ev.target.value)} /></Field>
-                    <Field label="Amount"><input className="input text-xs" type="number" min="0" value={e.amount} onChange={(ev) => setEntry(i, "amount", ev.target.value)} /></Field>
-                    <Field label="Date"><input className="input text-xs" type="date" value={e.date} onChange={(ev) => setEntry(i, "date", ev.target.value)} /></Field>
-                    <button type="button" onClick={() => removeEntry(i)} className="btn-ghost text-red-400 hover:text-red-600 p-2 mb-0.5"><i className="fa fa-times text-xs" /></button>
+                  <div key={i} className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                    <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
+                      <Field label="Ref. Code"><input className="input text-xs" value={e.referenceCode} onChange={(ev) => setEntry(i, "referenceCode", ev.target.value)} /></Field>
+                      <Field label="Amount"><input className="input text-xs" type="number" min="0" value={e.amount} onChange={(ev) => setEntry(i, "amount", ev.target.value)} /></Field>
+                      <Field label="Date"><input className="input text-xs" type="date" value={e.date} onChange={(ev) => setEntry(i, "date", ev.target.value)} /></Field>
+                      <button type="button" onClick={() => removeEntry(i)} className="btn-ghost text-red-400 hover:text-red-600 p-2 mb-0.5"><i className="fa fa-times text-xs" /></button>
+                    </div>
+                    <SlipField slip={e.slip} onChange={(slip) => setEntry(i, "slip", slip)} />
                   </div>
                 ))}
               </div>
@@ -159,7 +285,7 @@ function SalesModal({ onClose, onSaved }) {
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={loading} className="btn-primary">
-              <i className="fa fa-save" /> {loading ? "Saving…" : "Create Record"}
+              <i className="fa fa-save" /> {loading ? "Saving…" : (existingId ? "Update Record" : "Create Record")}
             </button>
           </div>
         </form>
@@ -169,40 +295,30 @@ function SalesModal({ onClose, onSaved }) {
 }
 
 export default function SalesRecordsPage() {
-  const navigate             = useNavigate();
-  const [records,  setRecords]  = useState([]);
-  const [search,   setSearch]   = useState("");
-  const [loading,  setLoading]  = useState(true);
-  const [modal,    setModal]    = useState(false);
-  const [confirm,  setConfirm]  = useState(null);
-  const [deleting, setDeleting] = useState(false);
+  const navigate              = useNavigate();
+  const qc                    = useQueryClient();
+  const [search,   setSearch] = useState("");
+  const [modal,    setModal]  = useState(false);
+  const [confirm,  setConfirm] = useState(null);
 
-  const fetchRecords = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data } = await salesRecordAPI.getAll({ search });
-      setRecords(data.data || []);
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [search]);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
-  useEffect(() => { fetchRecords(); }, [fetchRecords]);
+  const { data: records = [], isLoading: loading, error } = useSalesRecords({
+    search: debouncedSearch,
+  });
+  useEffect(() => { if (error) notifyError(error); }, [error]);
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await salesRecordAPI.remove(confirm._id);
-      toast.success("Record deleted");
-      setConfirm(null);
-      fetchRecords();
-    } catch (err) {
-      toast.error(getError(err));
-    } finally {
-      setDeleting(false);
-    }
+  const { remove } = useSalesRecordMutations();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["sales-records"] });
+
+  const handleDelete = () => {
+    remove.mutate(confirm._id, {
+      onSuccess: () => {
+        toast.success("Record deleted");
+        setConfirm(null);
+      },
+      onError: (err) => notifyError(err),
+    });
   };
 
   const totalOutstanding = records.reduce((s, r) => s + (Number(r.outstandingBalance) || 0), 0);
@@ -220,7 +336,7 @@ export default function SalesRecordsPage() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Records</p><p className="text-2xl font-bold text-slate-800">{records.length}</p></div>
         <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Received</p><p className="text-xl font-bold text-green-600">{fmt(records.reduce((s, r) => s + (Number(r.receivedAmount) || 0), 0))}</p></div>
         <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Outstanding</p><p className={`text-xl font-bold ${totalOutstanding > 0 ? "text-red-600" : "text-green-600"}`}>{fmt(totalOutstanding)}</p></div>
@@ -274,7 +390,7 @@ export default function SalesRecordsPage() {
         )}
       </div>
 
-      {modal && <SalesModal onClose={() => setModal(false)} onSaved={() => { setModal(false); fetchRecords(); }} />}
+      {modal && <SalesModal onClose={() => setModal(false)} onSaved={() => { setModal(false); refresh(); }} />}
 
       <ConfirmModal
         open={!!confirm}
@@ -282,7 +398,7 @@ export default function SalesRecordsPage() {
         message={`Delete record for "${confirm?.invoiceNumber}" (${confirm?.clientName})? This cannot be undone.`}
         onConfirm={handleDelete}
         onCancel={() => setConfirm(null)}
-        loading={deleting}
+        loading={remove.isPending}
       />
     </div>
   );

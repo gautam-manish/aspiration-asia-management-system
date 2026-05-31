@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useReactToPrint } from "react-to-print";
+import { useQueryClient } from "@tanstack/react-query";
 import { bookingAPI, invoiceAPI, voucherAPI } from "../../api";
-import { getError, formatDate } from "../../utils/helpers";
+import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, StatusBadge } from "../../components/common";
 import { InvoicePrint } from "../invoices/InvoiceDetailPage";
 import { VoucherPDF } from "../vouchers/VoucherDetailPage";
+import { useBooking } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 function Row({ label, value }) {
@@ -188,7 +190,7 @@ function ItineraryModal({ booking, onClose, onSaved }) {
       toast.success("Itinerary saved");
       onSaved();
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setSaving(false);
     }
@@ -391,16 +393,14 @@ export default function BookingDetailPage() {
   const [previewInvoice, setPreviewInvoice] = useState(null);
   const [previewVoucher, setPreviewVoucher] = useState(null);
 
-  const fetchBooking = () => {
-    setLoading(true);
-    bookingAPI
-      .getById(id)
-      .then(({ data }) => setBooking(data.data))
-      .catch((err) => toast.error(getError(err)))
-      .finally(() => setLoading(false));
-  };
+  const qc = useQueryClient();
+  const { data: bookingData, isLoading: bookingLoading, error: bookingError } = useBooking(id);
 
-  useEffect(() => { fetchBooking(); }, [id]);
+  useEffect(() => { if (bookingData) setBooking(bookingData); }, [bookingData]);
+  useEffect(() => { setLoading(bookingLoading); }, [bookingLoading]);
+  useEffect(() => { if (bookingError) notifyError(bookingError); }, [bookingError]);
+
+  const fetchBooking = () => qc.invalidateQueries({ queryKey: ["booking", id] });
 
   const openLinkedInvoice = async () => {
     if (!booking?.queryId) return;
@@ -413,7 +413,7 @@ export default function BookingDetailPage() {
       if (status === 404) {
         toast.error(`Invoice of booking ID ${booking.queryId} is not created`);
       } else {
-        toast.error(getError(err));
+        notifyError(err);
       }
     } finally {
       setLinkLoading("");
@@ -431,7 +431,7 @@ export default function BookingDetailPage() {
       if (status === 404) {
         toast.error(`Voucher of booking ID ${booking.queryId} is not created`);
       } else {
-        toast.error(getError(err));
+        notifyError(err);
       }
     } finally {
       setLinkLoading("");

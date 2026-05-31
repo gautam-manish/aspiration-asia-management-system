@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { sundryAPI } from "../../api";
-import { getError, formatDate } from "../../utils/helpers";
+import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
+import { useSundryEntry } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const COUNTRIES = ["Nepal", "India", "Bhutan"];
@@ -42,13 +44,17 @@ export default function SundryDetailPage() {
   const [form,    setForm]    = useState({});
   const [saving,  setSaving]  = useState(false);
 
-  const loadEntry = () =>
-    sundryAPI.getById(id)
-      .then(({ data }) => { setEntry(data.data); setForm({ ...data.data }); })
-      .catch((err) => toast.error(getError(err)))
-      .finally(() => setLoading(false));
+  const qc = useQueryClient();
+  const { data: entryData, isLoading: entryLoading, error: entryError } = useSundryEntry(id);
 
-  useEffect(() => { loadEntry(); }, [id]);
+  useEffect(() => {
+    if (entryData) {
+      setEntry(entryData);
+      setForm({ ...entryData });
+    }
+  }, [entryData]);
+  useEffect(() => { setLoading(entryLoading); }, [entryLoading]);
+  useEffect(() => { if (entryError) notifyError(entryError); }, [entryError]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -61,8 +67,10 @@ export default function SundryDetailPage() {
       setEntry(data.data);
       setEditing(false);
       toast.success("Entry updated ✓");
+      // Refresh both the list cache and this entry's cache
+      qc.invalidateQueries({ queryKey: ["sundry"] });
     } catch (err) {
-      toast.error(getError(err));
+      notifyError(err);
     } finally {
       setSaving(false);
     }

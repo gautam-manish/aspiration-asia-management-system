@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { salesRecordAPI, invoiceAPI } from "../../api";
 import { notifyError } from "../../utils/helpers";
-import { compressImageIfPossible } from "../../utils/compressImage";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useSalesRecordsPaginated, useSalesRecordMutations } from "../../hooks/useApiQueries";
@@ -47,13 +46,12 @@ export function SlipField({ slip, onChange }) {
 
     setBusy(true);
     try {
-      // Compress JPEGs before upload to save bandwidth + disk space.
-      const toUpload = await compressImageIfPossible(file);
-      if (toUpload.size > 5 * 1024 * 1024) {
-        toast.error("File is too large (max 5 MB after compression)");
+      // Hard 1 MB cap — refuse outright instead of silently compressing.
+      if (file.size > 1 * 1024 * 1024) {
+        toast.error("File is too large — please upload a slip under 1 MB");
         return;
       }
-      const { data } = await salesRecordAPI.uploadSlip(toUpload);
+      const { data } = await salesRecordAPI.uploadSlip(file);
       onChange(data?.data || null);
       toast.success("Slip uploaded ✓");
     } catch (err) {
@@ -97,7 +95,7 @@ export function SlipField({ slip, onChange }) {
   return (
     <label className={`flex items-center justify-center gap-2 text-xs border-2 border-dashed border-slate-300 rounded-lg px-2 py-1.5 cursor-pointer hover:border-brand-400 hover:bg-blue-50 transition-colors ${busy ? "opacity-50 pointer-events-none" : ""}`}>
       <i className="fa fa-paperclip" />
-      <span>{busy ? "Uploading…" : "Attach slip (PDF / JPG)"}</span>
+      <span>{busy ? "Uploading…" : "Attach slip (PDF / JPG, max 1 MB)"}</span>
       <input type="file" accept={ACCEPTED_TYPES} onChange={onPick} className="hidden" disabled={busy} />
     </label>
   );

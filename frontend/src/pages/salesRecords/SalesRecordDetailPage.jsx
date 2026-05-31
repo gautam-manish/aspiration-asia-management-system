@@ -26,6 +26,7 @@ export default function SalesRecordDetailPage() {
   const [record,  setRecord]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [addingEntry, setAddingEntry] = useState(false);
   const [form,    setForm]    = useState({});
   const [entries, setEntries] = useState([]);
   const [saving,  setSaving]  = useState(false);
@@ -146,7 +147,12 @@ export default function SalesRecordDetailPage() {
       <div className="card">
         <div className="card-header">
           <h3 className="font-semibold text-slate-700">Payment Entries</h3>
-          <span className="badge badge-blue">{(record.paymentEntries || []).length} entries</span>
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="badge badge-blue">{(record.paymentEntries || []).length} entries</span>
+            <button onClick={() => setAddingEntry(true)} className="btn-primary text-xs py-1.5 px-3">
+              <i className="fa fa-plus" /> Add Payment Entry
+            </button>
+          </div>
         </div>
         {(record.paymentEntries || []).length === 0 ? (
           <div className="card-body text-center text-slate-400 text-sm py-8">No payment entries recorded</div>
@@ -176,6 +182,15 @@ export default function SalesRecordDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Quick Add Payment Entry Modal */}
+      {addingEntry && (
+        <AddPaymentEntryModal
+          record={record}
+          onClose={() => setAddingEntry(false)}
+          onSaved={() => { setAddingEntry(false); loadRecord(); }}
+        />
+      )}
 
       {/* Edit Modal */}
       {editing && (
@@ -245,6 +260,94 @@ export default function SalesRecordDetailPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Quick Add Payment Entry Modal ──────────────────────────────────────────
+// Appends a single payment entry to an existing sales record without touching
+// any of its other fields. Reuses the SlipField uploader from SalesRecordsPage
+// so files are still subject to the 5 MB limit + image compression.
+function AddPaymentEntryModal({ record, onClose, onSaved }) {
+  const [referenceCode, setReferenceCode] = useState("");
+  const [amount, setAmount]               = useState("");
+  const [date, setDate]                   = useState(new Date().toISOString().slice(0, 10));
+  const [slip, setSlip]                   = useState(null);
+  const [saving, setSaving]               = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const num = Number(amount);
+    if (!Number.isFinite(num) || num <= 0) {
+      toast.error("Amount must be greater than zero");
+      return;
+    }
+    setSaving(true);
+    try {
+      // Re-send the entire record with the new entry appended. Strips backend-only
+      // fields (createdAt, updatedAt, _id) implicitly because we never set them.
+      const existing = (record.paymentEntries || []).map((p) => ({
+        referenceCode: p.referenceCode || "",
+        amount:        Number(p.amount) || 0,
+        date:          p.date || "",
+        slip:          (p.slip && p.slip.url) ? { ...p.slip } : null,
+      }));
+      const newEntry = {
+        referenceCode: referenceCode.trim(),
+        amount:        Math.round(num * 100) / 100,
+        date,
+        slip,
+      };
+      await salesRecordAPI.update(record._id, {
+        clientName:  record.clientName,
+        address:     record.address,
+        phone:       record.phone,
+        email:       record.email,
+        totalAmount: record.totalAmount,
+        paymentEntries: [...existing, newEntry],
+      });
+      toast.success("Payment entry added ✓");
+      onSaved();
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="font-display font-semibold text-slate-800">Add Payment Entry</h2>
+          <button onClick={onClose} className="btn-ghost p-1"><i className="fa fa-times" /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Reference Code">
+                <input className="input" value={referenceCode} onChange={(e) => setReferenceCode(e.target.value)} placeholder="e.g. TXN-12345" />
+              </Field>
+              <Field label="Date" required>
+                <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+              </Field>
+            </div>
+            <Field label="Amount (Rs.)" required>
+              <input className="input" type="number" min="0.01" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} required placeholder="0" />
+            </Field>
+            <div>
+              <p className="label mb-1">Payment Slip <span className="text-xs font-normal text-slate-400">(optional · PDF / JPG / JPEG)</span></p>
+              <SlipField slip={slip} onChange={setSlip} />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary">
+              <i className="fa fa-save" /> {saving ? "Saving…" : "Save Entry"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

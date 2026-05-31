@@ -28,7 +28,7 @@ router.post(
       if (err) {
         const code = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
         const msg  = err.code === "LIMIT_FILE_SIZE"
-          ? "File is too large (max 5 MB)"
+          ? "File is too large (max 1 MB)"
           : err.message || "Upload failed";
         return res.status(code).json({ success: false, message: msg, data: null });
       }

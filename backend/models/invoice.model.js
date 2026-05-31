@@ -15,6 +15,24 @@ const lineItemSchema = new mongoose.Schema(
   { _id: false },
 );
 
+// Advance payment recorded after the invoice was created.
+// Each entry has an optional file slip stored on disk.
+const advancePaymentSchema = new mongoose.Schema(
+  {
+    referenceCode: { type: String, trim: true, default: "" },
+    amount:        { type: Number, default: 0, min: 0 },
+    date:          { type: String, trim: true, default: "" },
+    slip: {
+      url:      { type: String, trim: true, default: "" },
+      fileName: { type: String, trim: true, default: "" },
+      mimeType: { type: String, trim: true, default: "" },
+      size:     { type: Number, default: 0 },
+    },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true },
+);
+
 const invoiceSchema = new mongoose.Schema(
   {
     invoiceNumber: {
@@ -68,9 +86,11 @@ const invoiceSchema = new mongoose.Schema(
     taxAmount:     { type: Number,  default: 0 },   // computed
     totalWithTax:  { type: Number,  default: 0 },   // subtotal - discount + taxAmount
 
-    advance: { type: Number, default: 0 },
     total: { type: Number, default: 0 },             // Final Total Due / Balance Due
     currency: { type: String, default: "$" },
+
+    // Advance payments captured after the invoice is issued.
+    advancePayments: { type: [advancePaymentSchema], default: [] },
 
     notes: { type: String, trim: true },
     terms: { type: String, trim: true },

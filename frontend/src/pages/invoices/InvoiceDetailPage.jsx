@@ -2,11 +2,134 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { invoiceAPI } from "../../api";
-import { numberToWords, notifyError } from "../../utils/helpers";
-import { PageLoader } from "../../components/common";
+import { numberToWords, notifyError, formatDate } from "../../utils/helpers";
+import { PageLoader, Field, ConfirmModal } from "../../components/common";
 import { InvoiceModal } from "./InvoicesPage";
 import { useInvoice } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
+
+const ADVANCE_MAX_BYTES = 1 * 1024 * 1024; // 1 MB hard cap (matches backend)
+const ADVANCE_ACCEPT     = ".pdf,.jpg,.jpeg,application/pdf,image/jpeg";
+
+const fmtSize = (bytes) => {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+// ─── Add Advance Payment Modal ───────────────────────────────────────────────
+function AddAdvanceModal({ invoice, onClose, onSaved }) {
+  const cur = invoice.currency || "Rs.";
+  const [referenceCode, setReferenceCode] = useState("");
+  const [amount, setAmount]               = useState("");
+  const [date, setDate]                   = useState(new Date().toISOString().slice(0, 10));
+  const [slip, setSlip]                   = useState(null); // {url, fileName, mimeType, size}
+  const [busy, setBusy]                   = useState(false);
+  const [saving, setSaving]               = useState(false);
+
+  const onPickSlip = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    // 1. type check
+    const okType = /\.(pdf|jpe?g)$/i.test(file.name) ||
+                   /^application\/pdf$|^image\/jpeg$/i.test(file.type);
+    if (!okType) { toast.error("Only PDF, JPG, or JPEG files are allowed"); return; }
+
+    // 2. 1 MB hard cap (no compression — explicit refusal as you asked)
+    if (file.size > ADVANCE_MAX_BYTES) {
+      toast.error("File is too large — please upload a slip under 1 MB");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const { data } = await invoiceAPI.uploadAdvanceSlip(file);
+      setSlip(data?.data || null);
+      toast.success("Slip uploaded ✓");
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeSlip = () => setSlip(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const num = Number(amount);
+    if (!Number.isFinite(num) || num <= 0) { toast.error("Amount must be greater than zero"); return; }
+    setSaving(true);
+    try {
+      await invoiceAPI.addAdvancePayment(invoice._id, {
+        referenceCode, amount: num, date, slip,
+      });
+      toast.success("Advance payment recorded ✓");
+      onSaved();
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="font-display font-semibold text-slate-800">Add Advance Payment</h2>
+          <button onClick={onClose} className="btn-ghost p-1"><i className="fa fa-times" /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Reference Code">
+                <input className="input" value={referenceCode} onChange={(e) => setReferenceCode(e.target.value)} placeholder="e.g. TXN-12345" />
+              </Field>
+              <Field label="Date" required>
+                <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+              </Field>
+            </div>
+            <Field label={`Amount (${cur})`} required>
+              <input className="input" type="number" min="0.01" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} required placeholder="0" />
+            </Field>
+
+            <div>
+              <p className="label mb-1">Payment Slip <span className="text-xs font-normal text-slate-400">(PDF / JPG / JPEG, max 1 MB)</span></p>
+              {slip?.url ? (
+                <div className="flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+                  <i className={`fa ${/^application\/pdf/.test(slip.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+                  <a href={slip.url} target="_blank" rel="noreferrer" className="font-medium text-brand-700 truncate hover:underline" title={slip.fileName}>
+                    {slip.fileName || "Slip"}
+                  </a>
+                  <span className="text-slate-400 ml-auto whitespace-nowrap">{fmtSize(slip.size)}</span>
+                  <button type="button" onClick={removeSlip} disabled={busy} className="btn-ghost text-red-400 hover:text-red-600 p-1" title="Remove slip">
+                    <i className="fa fa-times" />
+                  </button>
+                </div>
+              ) : (
+                <label className={`flex items-center justify-center gap-2 text-xs border-2 border-dashed border-slate-300 rounded-lg px-2 py-3 cursor-pointer hover:border-brand-400 hover:bg-blue-50 transition-colors ${busy ? "opacity-50 pointer-events-none" : ""}`}>
+                  <i className="fa fa-paperclip" />
+                  <span>{busy ? "Uploading…" : "Click to attach slip"}</span>
+                  <input type="file" accept={ADVANCE_ACCEPT} onChange={onPickSlip} className="hidden" disabled={busy} />
+                </label>
+              )}
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving || busy} className="btn-primary">
+              <i className="fa fa-save" /> {saving ? "Saving…" : "Save Advance"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 // ─── Exact original invoice preview template ─────────────────────────────────
 export function InvoicePrint({ inv }) {
@@ -131,12 +254,6 @@ export function InvoicePrint({ inv }) {
                 </div>
               </>
             )}
-            {inv.advance > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
-                <span style={{ fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.75rem" }}>Advance Payment</span>
-                <span style={{ color: "#16a34a", fontWeight: 500, fontSize: "0.9rem" }}>- {cur} {fmt(inv.advance)}</span>
-              </div>
-            )}
             <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: "0.95rem", borderTop: "2px solid #e2e8f0", marginTop: 4 }}>
               <span style={{ fontWeight: 700, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.06em" }}>Total Due</span>
               <span style={{ fontWeight: 700, color: "#1e293b" }}>{cur} {fmt(inv.total)}</span>
@@ -207,6 +324,9 @@ export default function InvoiceDetailPage() {
   const [inv,     setInv]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [advanceModal, setAdvanceModal] = useState(false);
+  const [confirmAdvance, setConfirmAdvance] = useState(null); // advance entry to delete
+  const [removingAdvance, setRemovingAdvance] = useState(false);
 
   const qc = useQueryClient();
   const { data: invData, isLoading: invLoading, error: invError } = useInvoice(id);
@@ -216,6 +336,23 @@ export default function InvoiceDetailPage() {
   useEffect(() => { if (invError) notifyError(invError); }, [invError]);
 
   const loadInvoice = () => qc.invalidateQueries({ queryKey: ["invoice", id] });
+
+  const handleRemoveAdvance = async () => {
+    if (!confirmAdvance?._id) return;
+    setRemovingAdvance(true);
+    try {
+      await invoiceAPI.removeAdvancePayment(inv._id, confirmAdvance._id);
+      toast.success("Advance payment removed");
+      setConfirmAdvance(null);
+      loadInvoice();
+      // Sales-record mirror was also touched server-side → invalidate that cache.
+      qc.invalidateQueries({ queryKey: ["sales-records"] });
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setRemovingAdvance(false);
+    }
+  };
 
   // Same print mechanic as original
   const handlePrint = () => {
@@ -255,6 +392,15 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          {(inv.advancePayments?.length || 0) > 0 ? (
+            <span className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm font-medium">
+              <i className="fa fa-check-circle" /> Advance Payment Recorded
+            </span>
+          ) : (
+            <button onClick={() => setAdvanceModal(true)} className="btn-secondary">
+              <i className="fa fa-money-bill-wave" /> Add Advance Payment
+            </button>
+          )}
           <button onClick={() => setEditing(true)} className="btn-secondary">
             <i className="fa fa-edit" /> Edit Invoice
           </button>
@@ -353,18 +499,78 @@ export default function InvoiceDetailPage() {
                   </div>
                 </>
               )}
-              {inv.advance > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
-                  <span>Advance Payment</span>
-                  <span>- {cur} {fmt(inv.advance)}</span>
-                </div>
-              )}
               <div className="flex justify-between font-bold text-brand-700 text-lg pt-1 border-t-2 border-slate-200">
                 <span>Total Due</span>
                 <span>{cur} {fmt(inv.total)}</span>
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Advance Payments (only on-screen, not in print) */}
+        <div className="card mb-4">
+          <div className="card-header">
+            <h3 className="font-semibold text-slate-700 text-sm flex items-center gap-2">
+              <i className="fa fa-money-bill-wave text-brand-500" /> Advance Payments
+            </h3>
+          </div>
+          {(inv.advancePayments || []).length === 0 ? (
+            <div className="card-body text-center text-sm text-slate-400 py-6">
+              No advance payments recorded yet.
+            </div>
+          ) : (
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th className="text-right">Amount</th>
+                    <th>Slip</th>
+                    <th className="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(inv.advancePayments || []).map((a) => (
+                    <tr key={a._id || a.createdAt}>
+                      <td className="text-sm text-slate-600">{a.date || formatDate(a.createdAt)}</td>
+                      <td className="text-xs font-mono text-slate-600">{a.referenceCode || "—"}</td>
+                      <td className="text-right font-semibold text-green-700">{cur} {fmt(a.amount)}</td>
+                      <td>
+                        {a.slip?.url ? (
+                          <a href={a.slip.url} target="_blank" rel="noreferrer" className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1">
+                            <i className={`fa ${/^application\/pdf/.test(a.slip.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+                            {a.slip.fileName || "View"}
+                          </a>
+                        ) : <span className="text-xs text-slate-400">—</span>}
+                      </td>
+                      <td>
+                        <div className="flex justify-end">
+                          <button onClick={() => setConfirmAdvance(a)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2" title="Remove">
+                            <i className="fa fa-trash-alt" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {(inv.advancePayments || []).length > 0 && (() => {
+                    const totalAdv = (inv.advancePayments || []).reduce((s, a) => s + (Number(a.amount) || 0), 0);
+                    const balance  = (Number(inv.total) || 0) - totalAdv;
+                    return (
+                      <tr className="bg-slate-50 font-semibold">
+                        <td colSpan={2} className="text-right text-slate-700">Total Advance</td>
+                        <td className="text-right text-green-700">{cur} {fmt(totalAdv)}</td>
+                        <td colSpan={2} className="text-right">
+                          <span className="text-slate-500 text-xs mr-2">Balance Due</span>
+                          <span className={balance > 0 ? "text-red-600" : "text-green-600"}>{cur} {fmt(Math.max(0, balance))}</span>
+                        </td>
+                      </tr>
+                    );
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Bottom: Amount in words + Notes/Terms | Account Details */}
@@ -418,6 +624,28 @@ export default function InvoiceDetailPage() {
           onSaved={() => { setEditing(false); setLoading(true); loadInvoice(); }}
         />
       )}
+
+      {advanceModal && (
+        <AddAdvanceModal
+          invoice={inv}
+          onClose={() => setAdvanceModal(false)}
+          onSaved={() => {
+            setAdvanceModal(false);
+            loadInvoice();
+            // The advance also lands in Sales Records — refresh that cache too.
+            qc.invalidateQueries({ queryKey: ["sales-records"] });
+          }}
+        />
+      )}
+
+      <ConfirmModal
+        open={!!confirmAdvance}
+        title="Remove Advance Payment"
+        message={`Remove this advance payment of ${cur} ${fmt(confirmAdvance?.amount || 0)}? The slip file will also be deleted.`}
+        onConfirm={handleRemoveAdvance}
+        onCancel={() => setConfirmAdvance(null)}
+        loading={removingAdvance}
+      />
     </div>
   );
 }

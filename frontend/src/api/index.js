@@ -60,6 +60,15 @@ export const invoiceAPI = {
   create:         (data)     => api.post("/invoices", data),
   update:         (id, data) => api.put(`/invoices/${id}`, data),
   remove:         (id)       => api.delete(`/invoices/${id}`),
+  uploadAdvanceSlip: (file)  => {
+    const fd = new FormData();
+    fd.append("slip", file, file.name);
+    return api.post("/invoices/upload-advance-slip", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  addAdvancePayment:    (id, data)        => api.post(`/invoices/${id}/advance`, data),
+  removeAdvancePayment: (id, advanceId)   => api.delete(`/invoices/${id}/advance/${advanceId}`),
 };
 
 // ── Cash Receipts ───────────────────────────────────────────────────

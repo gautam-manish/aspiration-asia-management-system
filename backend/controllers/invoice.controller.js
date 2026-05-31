@@ -1,4 +1,8 @@
 import Invoice from "../models/invoice.model.js";
+import SalesRecord from "../models/sales-record.model.js";
+import fs from "fs";
+import path from "path";
+import { ADVANCE_ROOT } from "../middleware/upload.middleware.js";
 
 // ─────────────────────────────────────────
 // Helper: generate a unique 8-digit ASA invoice number
@@ -188,6 +192,170 @@ export const deleteInvoice = async (req, res) => {
     const invoice = await Invoice.findByIdAndDelete(req.params.id);
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
     res.status(200).json({ success: true, message: "Invoice deleted successfully", data: null });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message, data: null });
+  }
+};
+
+
+// ─────────────────────────────────────────
+// @desc    Upload an Advance Payment Slip
+// @route   POST /api/invoices/upload-advance-slip   (multipart, field "slip")
+// ─────────────────────────────────────────
+export const uploadAdvanceSlip = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded", data: null });
+    }
+    const url = `/uploads/advance-slips/${req.file.filename}`;
+    return res.status(201).json({
+      success: true,
+      message: "Advance slip uploaded successfully",
+      data: {
+        url,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size:     req.file.size,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message, data: null });
+  }
+};
+
+// ─────────────────────────────────────────
+// @desc    Add an Advance Payment to an existing Invoice
+// @route   POST /api/invoices/:id/advance
+// body: { referenceCode, amount, date, slip? }
+//
+// Side-effect: also mirrors the advance into the matching SalesRecord
+// (creating one if none exists yet) so the books stay in sync.
+// ─────────────────────────────────────────
+export const addAdvancePayment = async (req, res) => {
+  try {
+    const { referenceCode, amount, date, slip } = req.body || {};
+    const numAmount = Number(amount);
+    if (!Number.isFinite(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ success: false, message: "Amount must be greater than zero", data: null });
+    }
+    const slipMeta = (slip && slip.url)
+      ? {
+          url:      String(slip.url      || "").trim(),
+          fileName: String(slip.fileName || "").trim(),
+          mimeType: String(slip.mimeType || "").trim(),
+          size:     Number(slip.size) || 0,
+        }
+      : { url: "", fileName: "", mimeType: "", size: 0 };
+
+    const entry = {
+      referenceCode: String(referenceCode || "").trim(),
+      amount:        Math.round(numAmount * 100) / 100,
+      date:          String(date || "").trim(),
+      slip:          slipMeta,
+    };
+    const invoice = await Invoice.findByIdAndUpdate(
+      req.params.id,
+      { $push: { advancePayments: entry } },
+      { returnDocument: "after", runValidators: true },
+    );
+    if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
+
+    // ── Sync into Sales Record (best-effort) ────────────────────────────
+    // If a SalesRecord already exists for this invoiceNumber → append the entry.
+    // Otherwise → create one using the invoice's bill-to details and totals.
+    try {
+      const invoiceNumber = (invoice.invoiceNumber || "").trim().toUpperCase();
+      if (invoiceNumber) {
+        const paymentEntry = {
+          referenceCode: entry.referenceCode,
+          amount:        entry.amount,
+          date:          entry.date,
+          slip:          { ...slipMeta },
+        };
+        const existing = await SalesRecord.findOne({ invoiceNumber });
+        if (existing) {
+          existing.paymentEntries.push(paymentEntry);
+          await existing.save(); // pre-save hook recomputes received + outstanding
+        } else {
+          const sr = new SalesRecord({
+            invoiceNumber,
+            clientName:  invoice.billTo?.name    || "(Unknown)",
+            address:     invoice.billTo?.address || "",
+            phone:       invoice.billTo?.mobile  || "",
+            email:       (invoice.billTo?.email  || "").toLowerCase(),
+            totalAmount: Number(invoice.total) || 0,
+            paymentEntries: [paymentEntry],
+          });
+          await sr.save();
+        }
+      }
+    } catch (syncErr) {
+      // Don't fail the whole request — advance is already recorded on the invoice.
+      // Surface it in the server log so we can investigate later.
+      console.warn("Sales-record sync failed for invoice", invoice.invoiceNumber, ":", syncErr.message);
+    }
+
+    res.status(201).json({ success: true, message: "Advance payment added", data: invoice });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message, data: null });
+  }
+};
+
+// ─────────────────────────────────────────
+// @desc    Remove an Advance Payment from an Invoice
+// @route   DELETE /api/invoices/:id/advance/:advanceId
+//
+// Side-effect: also removes the matching entry from the SalesRecord so totals
+// stay in sync. Match heuristic = (referenceCode, amount, date).
+// ─────────────────────────────────────────
+export const removeAdvancePayment = async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
+
+    const adv = invoice.advancePayments.id(req.params.advanceId);
+    if (!adv) return res.status(404).json({ success: false, message: "Advance payment not found", data: null });
+
+    // Best-effort: remove the slip file from disk if one was attached.
+    if (adv.slip && adv.slip.url && adv.slip.url.startsWith("/uploads/advance-slips/")) {
+      const filename = path.basename(adv.slip.url);
+      const filePath = path.join(ADVANCE_ROOT, filename);
+      fs.promises.unlink(filePath).catch(() => { /* file may already be gone */ });
+    }
+
+    // Snapshot before pulling so we can mirror the removal in SalesRecord.
+    const snapshot = {
+      referenceCode: adv.referenceCode || "",
+      amount:        Number(adv.amount) || 0,
+      date:          adv.date || "",
+      invoiceNumber: (invoice.invoiceNumber || "").trim().toUpperCase(),
+    };
+
+    invoice.advancePayments.pull({ _id: req.params.advanceId });
+    await invoice.save();
+
+    // Mirror removal into SalesRecord (best-effort)
+    try {
+      if (snapshot.invoiceNumber) {
+        const sr = await SalesRecord.findOne({ invoiceNumber: snapshot.invoiceNumber });
+        if (sr) {
+          // Find the first matching payment entry and pull it out.
+          const idx = sr.paymentEntries.findIndex((p) =>
+            (p.referenceCode || "") === snapshot.referenceCode &&
+            Number(p.amount || 0) === snapshot.amount &&
+            (p.date || "") === snapshot.date
+          );
+          if (idx !== -1) {
+            sr.paymentEntries.splice(idx, 1);
+            await sr.save(); // pre-save hook recomputes totals
+          }
+        }
+      }
+    } catch (syncErr) {
+      console.warn("Sales-record removal sync failed:", syncErr.message);
+    }
+
+    res.status(200).json({ success: true, message: "Advance payment removed", data: invoice });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message, data: null });
   }

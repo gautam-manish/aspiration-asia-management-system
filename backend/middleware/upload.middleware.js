@@ -24,6 +24,10 @@ const UPLOAD_BASE = process.env.UPLOAD_DIR
 const UPLOAD_ROOT = path.join(UPLOAD_BASE, "payment-slips");
 fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 
+// Where invoice advance-payment slips live.
+const ADVANCE_ROOT = path.join(UPLOAD_BASE, "advance-slips");
+fs.mkdirSync(ADVANCE_ROOT, { recursive: true });
+
 const ALLOWED_MIMES = new Set([
   "application/pdf",
   "image/jpeg", // covers .jpg and .jpeg
@@ -35,6 +39,15 @@ const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_ROOT),
   filename: (_req, file, cb) => {
     // Random + timestamp prefix avoids collisions and obscures the original name.
+    const rand = crypto.randomBytes(6).toString("hex");
+    const ext  = path.extname(file.originalname || "").toLowerCase() || ".bin";
+    cb(null, `${Date.now()}-${rand}${ext}`);
+  },
+});
+
+const advanceStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, ADVANCE_ROOT),
+  filename: (_req, file, cb) => {
     const rand = crypto.randomBytes(6).toString("hex");
     const ext  = path.extname(file.originalname || "").toLowerCase() || ".bin";
     cb(null, `${Date.now()}-${rand}${ext}`);
@@ -54,8 +67,17 @@ export const uploadPaymentSlip = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5 MB upper bound (frontend already compresses images)
+    fileSize: 1 * 1024 * 1024, // 1 MB hard cap (matches advance-slip rule)
   },
 });
 
-export { UPLOAD_BASE, UPLOAD_ROOT };
+// Smaller cap for invoice advance-payment slips (1 MB)
+export const uploadAdvanceSlip = multer({
+  storage: advanceStorage,
+  fileFilter,
+  limits: {
+    fileSize: 1 * 1024 * 1024, // 1 MB hard cap
+  },
+});
+
+export { UPLOAD_BASE, UPLOAD_ROOT, ADVANCE_ROOT };

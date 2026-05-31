@@ -44,7 +44,6 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
         taxPercent:    invoice.taxPercent    || 0,
         taxAmount:     invoice.taxAmount     || 0,
         totalWithTax:  invoice.totalWithTax  || 0,
-        advance:       invoice.advance       || 0,
         total:         invoice.total         || 0,
         currency:      invoice.currency      || "Rs.",
         notes:         invoice.notes         || "",
@@ -67,7 +66,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       lineItems: [{ ...EMPTY_LINE }],
       subtotal: 0, discountType: "none", discountValue: 0, discount: 0,
       taxApplicable: false, taxPercent: 0, taxAmount: 0, totalWithTax: 0,
-      advance: 0, total: 0,
+      total: 0,
       currency: "Rs.", notes: "", terms: "",
     };
   };
@@ -139,7 +138,8 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       ? round2((taxBase * (Number(f.taxPercent) || 0)) / 100)
       : 0;
     const totalWithTax = round2(taxBase + taxAmount);
-    const total = round2(totalWithTax - (Number(f.advance) || 0));
+    // Total Due is now the final figure including VAT/GST.
+    const total = totalWithTax;
     return { ...f, subtotal, discount, taxAmount, totalWithTax, total };
   };
 
@@ -377,25 +377,6 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
                     </div>
                   </>
                 )}
-
-                {/* Advance */}
-                <div className="flex justify-between items-center text-base text-slate-600 gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium whitespace-nowrap">Advance Paid</span>
-                    <input
-                      className="input py-1 text-sm w-24 text-right"
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={form.advance}
-                      onChange={(e) => setForm((f) => recalc({ ...f, advance: e.target.value }))}
-                      placeholder="0"
-                    />
-                  </div>
-                  <span className="text-green-600 whitespace-nowrap">
-                    {form.currency} {fmt(form.advance)}
-                  </span>
-                </div>
 
                 <div className="flex justify-between text-lg font-semibold text-slate-800 border-t border-slate-200 pt-2 mt-2">
                   <span>Total Due</span>

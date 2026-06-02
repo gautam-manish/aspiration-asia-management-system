@@ -131,3 +131,14 @@ export const purchaseRecordAPI = {
   remove:          (id)       => api.delete(`/purchaserecords/${id}`),
   addTransaction:  (id, data) => api.post(`/purchaserecords/${id}/transaction`, data),
 };
+
+// ── Bank Accounts ───────────────────────────────────────────────
+export const bankAccountAPI = {
+  getAll:          ()            => api.get("/bank-accounts"),
+  getById:         (id, params)  => api.get(`/bank-accounts/${id}`, { params }),
+  getDropdown:     ()            => api.get("/bank-accounts/dropdown"),
+  create:          (data)        => api.post("/bank-accounts", data),
+  update:          (id, data)    => api.put(`/bank-accounts/${id}`, data),
+  remove:          (id)          => api.delete(`/bank-accounts/${id}`),
+  addTransaction:  (id, data)    => api.post(`/bank-accounts/${id}/transaction`, data),
+};

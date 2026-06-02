@@ -22,6 +22,7 @@ import SalesRecordDetailPage   from "./pages/salesRecords/SalesRecordDetailPage"
 import PurchaseRecordsPage     from "./pages/purchaseRecords/PurchaseRecordsPage";
 import PurchaseRecordDetailPage from "./pages/purchaseRecords/PurchaseRecordDetailPage";
 import PackageCostPage         from "./pages/packageCost/PackageCostPage";
+import BankAccountsPage        from "./pages/bankAccounts/BankAccountsPage";
 
 function P({ children }) {
   return <ProtectedRoute>{children}</ProtectedRoute>;
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/sales-records/:id"         element={<P><SalesRecordDetailPage /></P>} />
         <Route path="/purchase-records"          element={<P><PurchaseRecordsPage /></P>} />
         <Route path="/purchase-records/:id"      element={<P><PurchaseRecordDetailPage /></P>} />
+        <Route path="/bank-accounts"              element={<P><BankAccountsPage /></P>} />
         <Route path="/package-cost"              element={<P><PackageCostPage /></P>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -23,6 +23,7 @@ import bookingRoutes        from "./routes/booking.routes.js";
 import sundryRoutes         from "./routes/sundry.routes.js";
 import salesRecordRoutes    from "./routes/sales-record.routes.js";
 import purchaseRecordRoutes from "./routes/purchase-record.routes.js";
+import bankAccountRoutes    from "./routes/bank-account.routes.js";
 
 connectDB();
 
@@ -99,6 +100,7 @@ app.use("/api/calculator",      authMiddleware, calculatorRoutes);
 app.use("/api/bookings",        authMiddleware, bookingRoutes);
 app.use("/api/salesrecords",    authMiddleware, salesRecordRoutes);
 app.use("/api/purchaserecords", authMiddleware, purchaseRecordRoutes);
+app.use("/api/bank-accounts",   authMiddleware, bankAccountRoutes);
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;

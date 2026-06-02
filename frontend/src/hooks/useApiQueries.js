@@ -12,6 +12,7 @@ import {
   sundryAPI,
   salesRecordAPI,
   purchaseRecordAPI,
+  bankAccountAPI,
 } from "../api";
 
 // ── Bookings ────────────────────────────────────────────────────────────────
@@ -420,14 +421,22 @@ export function usePurchaseRecord(id) {
 
 export function usePurchaseRecordMutations() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["purchase-records"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["purchase-records"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
+  };
   return {
     create:         useMutation({ mutationFn: (data) => purchaseRecordAPI.create(data), onSuccess: invalidate }),
     update:         useMutation({ mutationFn: ({ id, data }) => purchaseRecordAPI.update(id, data), onSuccess: invalidate }),
     remove:         useMutation({ mutationFn: (id) => purchaseRecordAPI.remove(id), onSuccess: invalidate }),
     addTransaction: useMutation({
       mutationFn: ({ id, data }) => purchaseRecordAPI.addTransaction(id, data),
-      onSuccess: (_, { id }) => qc.invalidateQueries({ queryKey: ["purchase-record", id] }),
+      onSuccess: (_, { id }) => {
+        qc.invalidateQueries({ queryKey: ["purchase-record", id] });
+        qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+        qc.invalidateQueries({ queryKey: ["bank-account"] });
+      },
     }),
   };
 }
@@ -459,4 +468,53 @@ export function useAuthVerify(token) {
     staleTime: 30 * 60_000, // verified once per 30m is plenty
     retry: false,           // don't hammer auth on a 401
   });
+}
+
+// ── Bank Accounts ───────────────────────────────────────────────────────────
+export function useBankAccounts() {
+  return useQuery({
+    queryKey: ["bank-accounts"],
+    queryFn: () => bankAccountAPI.getAll().then((r) => r.data?.data ?? []),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useBankAccount(id, params = {}) {
+  return useQuery({
+    queryKey: ["bank-account", id, params],
+    queryFn: () => bankAccountAPI.getById(id, params).then((r) => r.data?.data),
+    enabled: !!id,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useBankDropdown() {
+  return useQuery({
+    queryKey: ["bank-accounts", "dropdown"],
+    queryFn: () => bankAccountAPI.getDropdown().then((r) => r.data?.data ?? []),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useBankAccountMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+  return {
+    create: useMutation({ mutationFn: (data) => bankAccountAPI.create(data), onSuccess: invalidate }),
+    update: useMutation({
+      mutationFn: ({ id, data }) => bankAccountAPI.update(id, data),
+      onSuccess: (_, { id }) => {
+        invalidate();
+        qc.invalidateQueries({ queryKey: ["bank-account", id] });
+      },
+    }),
+    remove: useMutation({ mutationFn: (id) => bankAccountAPI.remove(id), onSuccess: invalidate }),
+    addTransaction: useMutation({
+      mutationFn: ({ id, data }) => bankAccountAPI.addTransaction(id, data),
+      onSuccess: (_, { id }) => {
+        invalidate();
+        qc.invalidateQueries({ queryKey: ["bank-account", id] });
+      },
+    }),
+  };
 }

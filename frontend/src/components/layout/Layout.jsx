@@ -23,6 +23,7 @@ const NAV_GROUPS = [
       { to: "/cash-receipts",    icon: "fa-receipt",        label: "Cash Receipts" },
       { to: "/sales-records",    icon: "fa-chart-line",     label: "Sales Records" },
       { to: "/purchase-records", icon: "fa-book",           label: "Purchase Records" },
+      { to: "/bank-accounts",    icon: "fa-university",     label: "Bank Accounts" },
       { to: "/calculator",       icon: "fa-calculator",     label: "Calculator" },
     ],
   },

@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { purchaseRecordAPI } from "../../api";
 import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
-import { usePurchaseRecord } from "../../hooks/useApiQueries";
+import { usePurchaseRecord, useBankDropdown } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const fmt = (n) => Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -26,6 +26,7 @@ export default function PurchaseRecordDetailPage() {
 
   const qc = useQueryClient();
   const { data: recordData, isLoading: recordLoading, error: recordError } = usePurchaseRecord(id);
+  const { data: bankList = [] } = useBankDropdown();
 
   useEffect(() => { if (recordData) setRecord(recordData); }, [recordData]);
   useEffect(() => { setLoading(recordLoading); }, [recordLoading]);
@@ -301,6 +302,17 @@ export default function PurchaseRecordDetailPage() {
             </div>
             <form onSubmit={handleAddTxn}>
               <div className="modal-body space-y-3">
+                <div>
+                  <p className="label mb-2">Entry Type *</p>
+                  <div className="flex gap-3">
+                    {[["cr","Credit (CR)"],["dr","Debit (DR)"]].map(([val, lbl]) => (
+                      <button key={val} type="button" onClick={() => { setT("type", val); if (val === "cr") setT("bank", ""); }}
+                        className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${txn.type === val ? (val === "cr" ? "border-green-500 bg-green-50 text-green-700" : "border-red-500 bg-red-50 text-red-700") : "border-slate-200 text-slate-500"}`}>
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Date *"><input className="input" type="date" value={txn.date} onChange={(e) => setT("date", e.target.value)} required /></Field>
                   <Field label="Ref / Voucher No."><input className="input" value={txn.refNo} onChange={(e) => setT("refNo", e.target.value)} /></Field>
@@ -308,24 +320,14 @@ export default function PurchaseRecordDetailPage() {
                   <Field label="Amount (Rs.) *"><input className="input" type="number" min="0.01" step="0.01" value={txn.amount} onChange={(e) => setT("amount", e.target.value)} required /></Field>
                   <Field label="Description" className="col-span-2"><input className="input" value={txn.description} onChange={(e) => setT("description", e.target.value)} /></Field>
                   <Field label="Bank">
-                    <select className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)}>
+                    <select className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} disabled={txn.type === "cr"}>
                       <option value="">— Select Bank —</option>
-                      <option value="Everest Bank">Everest Bank</option>
-                      <option value="Nabil Bank">Nabil Bank</option>
-                      <option value="Kumari Bank">Kumari Bank</option>
+                      {bankList.map((b) => (
+                        <option key={b._id} value={b.bankName}>{b.bankName}</option>
+                      ))}
+                      <option value="Cash">Cash</option>
                     </select>
                   </Field>
-                </div>
-                <div>
-                  <p className="label mb-2">Entry Type *</p>
-                  <div className="flex gap-3">
-                    {[["cr","Credit (CR)"],["dr","Debit (DR)"]].map(([val, lbl]) => (
-                      <button key={val} type="button" onClick={() => setT("type", val)}
-                        className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${txn.type === val ? (val === "cr" ? "border-green-500 bg-green-50 text-green-700" : "border-red-500 bg-red-50 text-red-700") : "border-slate-200 text-slate-500"}`}>
-                        {lbl}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
               <div className="modal-footer">

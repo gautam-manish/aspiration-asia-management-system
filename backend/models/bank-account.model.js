@@ -2,8 +2,8 @@ import mongoose from "mongoose";
 
 // ─────────────────────────────────────────
 //  Manual Transaction Sub-Schema
-//  Only credit (CR) entries are stored here.
-//  Debit entries come from purchase records.
+//  Credit (CR) entries and bank charges (DR) are stored here.
+//  Purchase record debits are fetched at query time.
 // ─────────────────────────────────────────
 const bankTransactionSchema = new mongoose.Schema(
   {
@@ -29,7 +29,7 @@ const bankTransactionSchema = new mongoose.Schema(
     },
     type: {
       type:    String,
-      enum:    ["cr"],
+      enum:    ["cr", "dr"],
       default: "cr",
     },
   },
@@ -78,8 +78,8 @@ const bankAccountSchema = new mongoose.Schema(
       default: 0,
     },
 
-    // Only manual credit entries are stored here.
-    // Debit entries are fetched from purchase records at query time.
+    // Manual credit entries and bank charges (debit) are stored here.
+    // Purchase record debits are fetched at query time.
     transactions: {
       type:    [bankTransactionSchema],
       default: [],

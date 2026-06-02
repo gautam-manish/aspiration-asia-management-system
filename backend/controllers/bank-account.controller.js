@@ -9,27 +9,29 @@ export const getAllBankAccounts = async (req, res) => {
   try {
     const banks = await BankAccount.find().sort({ bankName: 1 }).lean();
 
-    // Collect all DR transactions from purchase records that reference each bank
-    const purchaseRecords = await PurchaseRecord.find({}).lean();
+    // Aggregate only DR transactions from purchase records, grouped by bank name
+    const debitAgg = await PurchaseRecord.aggregate([
+      { $unwind: "$transactions" },
+      { $match: { "transactions.type": "dr", "transactions.bank": { $ne: "" } } },
+      { $group: { _id: "$transactions.bank", total: { $sum: "$transactions.amount" } } },
+    ]);
 
-    // Build a map: bankName → total debit amount from purchase records
     const debitMap = new Map();
-    for (const pr of purchaseRecords) {
-      for (const txn of pr.transactions || []) {
-        if (txn.type === "dr" && txn.bank) {
-          const prev = debitMap.get(txn.bank) || 0;
-          debitMap.set(txn.bank, prev + (txn.amount || 0));
-        }
-      }
+    for (const row of debitAgg) {
+      debitMap.set(row._id, row.total || 0);
     }
 
     // Compute balance for each bank
     const data = banks.map((bank) => {
-      const totalCredit = (bank.transactions || []).reduce(
-        (sum, t) => sum + (t.amount || 0),
-        0
-      );
-      const totalDebit = debitMap.get(bank.bankName) || 0;
+      const manualCredit = (bank.transactions || [])
+        .filter((t) => t.type === "cr")
+        .reduce((sum, t) => sum + (t.amount || 0), 0);
+      const manualDebit = (bank.transactions || [])
+        .filter((t) => t.type === "dr")
+        .reduce((sum, t) => sum + (t.amount || 0), 0);
+      const purchaseDebit = debitMap.get(bank.bankName) || 0;
+      const totalCredit = manualCredit;
+      const totalDebit = purchaseDebit + manualDebit;
       const balance =
         (bank.openingBalance || 0) + totalCredit - totalDebit;
       return {
@@ -64,44 +66,47 @@ export const getBankAccountById = async (req, res) => {
 
     const { from, to } = req.query;
 
-    // 1. Manual credit transactions from this bank
-    const credits = (bank.transactions || []).map((t) => ({
+    // 1. Manual transactions from this bank (both CR and DR/bank charges)
+    const manualTxns = (bank.transactions || []).map((t) => ({
       _id:         t._id,
       date:        t.date,
       refNo:       t.refNo,
       description: t.description,
       amount:      t.amount || 0,
-      type:        "cr",
-      source:      "manual",
+      type:        t.type || "cr",
+      source:      t.type === "dr" ? "bank-charge" : "manual",
     }));
 
-    // 2. Debit transactions from purchase records matching this bank's name
-    const purchaseRecords = await PurchaseRecord.find({}).lean();
-    const debits = [];
-    for (const pr of purchaseRecords) {
-      for (const txn of pr.transactions || []) {
-        if (txn.type === "dr" && txn.bank === bank.bankName) {
-          debits.push({
-            _id:         txn._id,
-            date:        txn.date,
-            refNo:       txn.refNo,
-            description: txn.description || pr.debtorName,
-            debtorName:  pr.debtorName,
-            amount:      txn.amount || 0,
-            type:        "dr",
-            source:      "purchase",
-          });
-        }
-      }
-    }
+    // 2. Debit transactions from purchase records matching this bank's name (aggregation)
+    const debitAgg = await PurchaseRecord.aggregate([
+      { $unwind: "$transactions" },
+      { $match: { "transactions.type": "dr", "transactions.bank": bank.bankName } },
+      { $project: {
+          _id:         "$transactions._id",
+          date:        "$transactions.date",
+          refNo:       "$transactions.refNo",
+          description: { $ifNull: ["$transactions.description", "$debtorName"] },
+          debtorName:  "$debtorName",
+          amount:      { $ifNull: ["$transactions.amount", 0] },
+      }},
+    ]);
+    const debits = debitAgg.map((t) => ({
+      ...t,
+      type:   "dr",
+      source: "purchase",
+    }));
 
     // 3. Merge & filter by date range
-    let merged = [...credits, ...debits];
+    let merged = [...manualTxns, ...debits];
     if (from) merged = merged.filter((t) => t.date >= from);
     if (to)   merged = merged.filter((t) => t.date <= to);
 
-    // 4. Sort by date ascending
-    merged.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    // 4. Sort by date ascending, then by _id (creation order) for same-date entries
+    merged.sort((a, b) => {
+      const d = (a.date || "").localeCompare(b.date || "");
+      if (d !== 0) return d;
+      return String(a._id || "").localeCompare(String(b._id || ""));
+    });
 
     // 5. Compute totals
     const totalCredit = merged
@@ -280,19 +285,21 @@ export const addBankTransaction = async (req, res) => {
         .json({ success: false, message: "Bank account not found." });
     }
 
+    const txnType = transaction.type === "dr" ? "dr" : "cr";
+
     bank.transactions.push({
       date:        transaction.date,
       refNo:       transaction.refNo || "",
       description: transaction.description || "",
       amount:      Number(transaction.amount),
-      type:        "cr",
+      type:        txnType,
     });
 
     await bank.save();
 
     return res.status(200).json({
       success: true,
-      message: "Credit transaction added.",
+      message: txnType === "dr" ? "Bank charge added." : "Credit transaction added.",
       data: bank,
     });
   } catch (error) {

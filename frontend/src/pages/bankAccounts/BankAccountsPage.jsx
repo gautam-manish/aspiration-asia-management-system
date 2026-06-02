@@ -196,6 +196,65 @@ function AddCreditModal({ bankId, bankName, onClose, onSaved }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  BankChargesModal — add a bank charge (debit) to a bank
+// ═══════════════════════════════════════════════════════════════
+function BankChargesModal({ bankId, bankName, onClose, onSaved }) {
+  const [txn, setTxn] = useState({ date: "", amount: "", description: "" });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setTxn((t) => ({ ...t, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!txn.date) { toast.error("Date is required"); return; }
+    if (!txn.amount || Number(txn.amount) <= 0) { toast.error("Amount must be > 0"); return; }
+    setSaving(true);
+    try {
+      await bankAccountAPI.addTransaction(bankId, {
+        transaction: { ...txn, amount: Number(txn.amount), type: "dr" },
+      });
+      toast.success("Bank charge added ✓");
+      onSaved();
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="font-display font-semibold text-slate-800">
+            Bank Charges — {bankName}
+          </h2>
+          <button onClick={onClose} className="btn-ghost p-1"><i className="fa fa-times" /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body space-y-3">
+            <Field label="Date *">
+              <input className="input" type="date" value={txn.date} onChange={(e) => set("date", e.target.value)} required />
+            </Field>
+            <Field label="Amount (Rs.) *">
+              <input className="input" type="number" min="0.01" step="0.01" value={txn.amount} onChange={(e) => set("amount", e.target.value)} required />
+            </Field>
+            <Field label="Description">
+              <input className="input" value={txn.description} onChange={(e) => set("description", e.target.value)} placeholder="e.g. SMS charges, annual fee" />
+            </Field>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary">
+              <i className="fa fa-minus-circle" /> {saving ? "Saving…" : "Add Charge"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  Transaction Table — shows merged DR/CR entries for selected bank
 // ═══════════════════════════════════════════════════════════════
 function TransactionTable({ bankId, bankName, dateKey, fromDate, toDate, openingBalance }) {
@@ -285,6 +344,7 @@ export default function BankAccountsPage() {
 
   const [addBankModal, setAddBankModal]     = useState(false);
   const [creditModal,  setCreditModal]      = useState(null); // { bankId, bankName }
+  const [chargeModal,  setChargeModal]      = useState(null); // { bankId, bankName }
   const [selectedBank, setSelectedBank]     = useState(null); // bank._id
   const [confirmDelete, setConfirmDelete]   = useState(null);
 
@@ -508,12 +568,20 @@ export default function BankAccountsPage() {
                       }
                     </p>
                   </div>
-                  <button
-                    onClick={() => setCreditModal({ bankId: selectedBank, bankName: activeBankObj?.bankName })}
-                    className="btn-primary text-sm"
-                  >
-                    <i className="fa fa-plus" /> Add Credit
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setChargeModal({ bankId: selectedBank, bankName: activeBankObj?.bankName })}
+                      className="btn-secondary text-sm"
+                    >
+                      <i className="fa fa-minus-circle" /> Bank Charges
+                    </button>
+                    <button
+                      onClick={() => setCreditModal({ bankId: selectedBank, bankName: activeBankObj?.bankName })}
+                      className="btn-primary text-sm"
+                    >
+                      <i className="fa fa-plus" /> Add Credit
+                    </button>
+                  </div>
                 </div>
 
                 <TransactionTable
@@ -547,6 +615,20 @@ export default function BankAccountsPage() {
             setCreditModal(null);
             refresh();
             qc.invalidateQueries({ queryKey: ["bank-account", creditModal.bankId] });
+          }}
+        />
+      )}
+
+      {/* Bank Charges Modal */}
+      {chargeModal && (
+        <BankChargesModal
+          bankId={chargeModal.bankId}
+          bankName={chargeModal.bankName}
+          onClose={() => setChargeModal(null)}
+          onSaved={() => {
+            setChargeModal(null);
+            refresh();
+            qc.invalidateQueries({ queryKey: ["bank-account", chargeModal.bankId] });
           }}
         />
       )}

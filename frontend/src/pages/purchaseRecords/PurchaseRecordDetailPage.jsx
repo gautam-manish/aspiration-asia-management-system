@@ -307,7 +307,14 @@ export default function PurchaseRecordDetailPage() {
                   <Field label="Client Name"><input className="input" value={txn.clientName} onChange={(e) => setT("clientName", e.target.value)} /></Field>
                   <Field label="Amount (Rs.) *"><input className="input" type="number" min="0.01" step="0.01" value={txn.amount} onChange={(e) => setT("amount", e.target.value)} required /></Field>
                   <Field label="Description" className="col-span-2"><input className="input" value={txn.description} onChange={(e) => setT("description", e.target.value)} /></Field>
-                  <Field label="Bank"><input className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} /></Field>
+                  <Field label="Bank">
+                    <select className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)}>
+                      <option value="">— Select Bank —</option>
+                      <option value="Everest Bank">Everest Bank</option>
+                      <option value="Nabil Bank">Nabil Bank</option>
+                      <option value="Kumari Bank">Kumari Bank</option>
+                    </select>
+                  </Field>
                 </div>
                 <div>
                   <p className="label mb-2">Entry Type *</p>

@@ -201,7 +201,12 @@ function AddModal({ onClose, onSaved }) {
                   <input className="input" value={txn.description} onChange={(e) => setT("description", e.target.value)} />
                 </Field>
                 <Field label="Bank">
-                  <input className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} />
+                  <select className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)}>
+                    <option value="">— Select Bank —</option>
+                    <option value="Everest Bank">Everest Bank</option>
+                    <option value="Nabil Bank">Nabil Bank</option>
+                    <option value="Kumari Bank">Kumari Bank</option>
+                  </select>
                 </Field>
               </div>
             </div>

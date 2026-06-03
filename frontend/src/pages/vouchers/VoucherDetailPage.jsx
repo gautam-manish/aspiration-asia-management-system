@@ -737,7 +737,7 @@ export default function VoucherDetailPage() {
           voucher={voucher}
           hotels={hotels}
           onClose={() => setEditing(false)}
-          onSaved={() => { setEditing(false); setLoading(true); loadVoucher(); }}
+          onSaved={async () => { setEditing(false); await qc.invalidateQueries({ queryKey: ["voucher", id] }); }}
         />
       )}
     </div>

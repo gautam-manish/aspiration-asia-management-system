@@ -239,6 +239,7 @@ export default function BookingsPage() {
   const qc = useQueryClient();
   const [status, setStatus]     = useState("confirmed");
   const [search, setSearch]     = useState("");
+  const [date, setDate]         = useState("");
   const [page, setPage]         = useState(1);
   const [modal, setModal]       = useState(null);
   const [nextId, setNextId]     = useState("");
@@ -246,8 +247,8 @@ export default function BookingsPage() {
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  // Reset to first page whenever search/status changes
-  useEffect(() => { setPage(1); }, [debouncedSearch, status]);
+  // Reset to first page whenever search/status/date changes
+  useEffect(() => { setPage(1); }, [debouncedSearch, status, date]);
 
   // ── Data ──────────────────────────────────────────────────────────────
   const {
@@ -255,7 +256,7 @@ export default function BookingsPage() {
     isLoading: loading,
     isFetching,
     error,
-  } = useBookingsPaginated({ status, search: debouncedSearch, page, limit: 50 });
+  } = useBookingsPaginated({ status, search: debouncedSearch, date, page, limit: 50 });
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const refreshBookings = () => qc.invalidateQueries({ queryKey: ["bookings"] });
@@ -314,11 +315,29 @@ export default function BookingsPage() {
       <div className="card">
         <div className="card-header">
           <SearchBar value={search} onChange={setSearch} placeholder="Search by name, ID, destination…" />
-          <span className="text-sm text-slate-500">
+          <div className="flex items-center gap-3">
+            <input
+              type="date"
+              className="input text-sm py-1.5 px-3"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              title="Filter by date"
+            />
+            {date && (
+              <button
+                onClick={() => setDate("")}
+                className="btn-ghost text-xs py-1 px-2 text-slate-400 hover:text-red-500"
+                title="Clear date filter"
+              >
+                <i className="fa fa-times" />
+              </button>
+            )}
+            <span className="text-sm text-slate-500 whitespace-nowrap">
             {total === 0
               ? `No ${status} bookings`
               : `${(page - 1) * 50 + 1}–${Math.min(page * 50, total)} of ${total} booking${total !== 1 ? "s" : ""}`}
-          </span>
+            </span>
+          </div>
         </div>
 
         {loading ? <div className="p-8"><PageLoader /></div> : bookings.length === 0 ? (

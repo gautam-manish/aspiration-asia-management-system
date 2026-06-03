@@ -24,10 +24,10 @@ export function useBookings({ status = "confirmed", search = "" } = {}) {
 }
 
 // Paginated variant for the Bookings list page.
-export function useBookingsPaginated({ status = "confirmed", search = "", page = 1, limit = 50 } = {}) {
+export function useBookingsPaginated({ status = "confirmed", search = "", date = "", page = 1, limit = 50 } = {}) {
   return useQuery({
-    queryKey: ["bookings", "paginated", { status, search, page, limit }],
-    queryFn: () => bookingAPI.getAll({ status, search, page, limit }).then((r) => ({
+    queryKey: ["bookings", "paginated", { status, search, date, page, limit }],
+    queryFn: () => bookingAPI.getAll({ status, search, date, page, limit }).then((r) => ({
       bookings:   r.data?.data       ?? [],
       total:      r.data?.total      ?? 0,
       page:       r.data?.page       ?? page,

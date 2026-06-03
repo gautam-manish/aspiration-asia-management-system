@@ -148,7 +148,7 @@ export const createBooking = async (req, res) => {
 // ─────────────────────────────────────────
 export const getAllBookings = async (req, res) => {
   try {
-    const { status, search, page, limit } = req.query;
+    const { status, search, date, page, limit } = req.query;
     const filter = {};
 
     // Status filter (default: confirmed)
@@ -165,6 +165,15 @@ export const getAllBookings = async (req, res) => {
         { queryId: { $regex: escapeRegex(search), $options: "i" } },
         { destination: { $regex: escapeRegex(search), $options: "i" } },
       ];
+    }
+
+    // Date filter: match bookings created on the given date
+    if (date) {
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt = { $gte: start, $lte: end };
     }
 
     const wantsPagination = page !== undefined || limit !== undefined;

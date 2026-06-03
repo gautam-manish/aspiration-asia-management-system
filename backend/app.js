@@ -29,8 +29,17 @@ connectDB();
 
 const app = express();
 
-// ── Security headers (CSP off so React inline styles still work) ─────────────
-app.use(helmet({ contentSecurityPolicy: false }));
+// ── Trust proxy (needed behind Nginx / Cloudflare so rate-limiter uses real IP)
+app.set("trust proxy", 1);
+
+// ── Security headers ─────────────────────────────────────────────────────────
+// CSP is off so React inline styles still work. If you serve the React build
+// via Nginx, you can enable CSP there instead.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+}));
 
 // ── gzip compression on all responses ────────────────────────────────────────
 app.use(compression());
@@ -71,8 +80,22 @@ app.get("/api/health", (_req, res) => {
   res.status(200).json({ status: "ok", time: new Date().toISOString() });
 });
 
+// ── Global API rate limiter ──────────────────────────────────────────────────
+// 100 requests per minute per IP — generous for normal use, blocks abuse.
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many requests. Please slow down.",
+  },
+});
+app.use("/api", globalLimiter);
+
 // ── Login brute-force protection ─────────────────────────────────────────────
-// 15 attempts per 10 minutes per IP.
+// 20 attempts per 10 minutes per IP.
 const loginLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 20,
@@ -87,9 +110,10 @@ app.use("/api/auth/login", loginLimiter);
 
 // ── Public ───────────────────────────────────────────────────────────────────
 app.use("/api/auth",   authRoutes);
-app.use("/api/sundry", sundryRoutes);    // public for the dropdown lookup
 
 // ── Protected ────────────────────────────────────────────────────────────────
+app.use("/api/sundry",          authMiddleware, sundryRoutes);
+
 app.use("/api/hotels",          authMiddleware, hotelRoutes);
 app.use("/api/mail",            authMiddleware, emailRoutes);
 app.use("/api/reservations",    authMiddleware, reservationRoutes);
@@ -101,6 +125,27 @@ app.use("/api/bookings",        authMiddleware, bookingRoutes);
 app.use("/api/salesrecords",    authMiddleware, salesRecordRoutes);
 app.use("/api/purchaserecords", authMiddleware, purchaseRecordRoutes);
 app.use("/api/bank-accounts",   authMiddleware, bankAccountRoutes);
+
+// ── Centralized Error Handler ────────────────────────────────────────────────
+// MUST be after all routes. Catches unhandled errors, multer errors, bad JSON,
+// etc. In production, never expose internal error details to the client.
+app.use((err, _req, res, _next) => {
+  // Multer file-size / file-type errors
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ success: false, message: "File is too large (max 1 MB)." });
+  }
+  if (err.message?.includes("Only PDF, JPG, or JPEG")) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+
+  console.error("[unhandled]", err);
+  const status = err.status || err.statusCode || 500;
+  const message =
+    process.env.NODE_ENV === "production"
+      ? "An unexpected error occurred. Please try again."
+      : err.message || "Internal server error";
+  res.status(status).json({ success: false, message });
+});
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
@@ -118,3 +163,13 @@ const shutdown = (signal) => {
 };
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT",  () => shutdown("SIGINT"));
+
+// ── Catch-all: unhandled promise rejections & uncaught exceptions ────────────
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled Promise Rejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught Exception:", err);
+  // Let the process restart via pm2 / systemd
+  process.exit(1);
+});

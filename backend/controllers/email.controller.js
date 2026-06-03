@@ -117,7 +117,7 @@ export const sendPackageMail = async (req, res) => {
     res.status(200).json({ success: true, message: "Mail sent successfully" });
   } catch (error) {
     console.error("[mail] sendPackageMail error:", error);
-    res.status(500).json({ success: false, message: error.message || "Error sending mail" });
+    res.status(500).json({ success: false, message: "Error sending mail. Check server email configuration." });
   }
 };
 
@@ -188,6 +188,6 @@ export const sendReservationMail = async (req, res) => {
     res.status(200).json({ success: true, message: "Reservation sent successfully" });
   } catch (error) {
     console.error("[mail] sendReservationMail error:", error);
-    res.status(500).json({ success: false, message: error.message || "Error sending reservation" });
+    res.status(500).json({ success: false, message: "Error sending reservation email. Check server email configuration." });
   }
 };

@@ -1,8 +1,7 @@
 import jwt from "jsonwebtoken";
 
 // ─────────────────────────────────────────
-// Hardcoded Admin Credentials
-// Change these to whatever you want
+// Admin credentials — username is fixed; password comes from .env
 // ─────────────────────────────────────────
 const ADMIN_USERNAME = "admin";
 
@@ -20,14 +19,14 @@ export const login = async (req, res) => {
             console.error("[auth] JWT_SECRET is not set in environment");
             return res.status(500).json({
                 success: false,
-                message: "Server is not configured (missing JWT secret). Contact administrator.",
+                message: "Server configuration error. Contact administrator.",
             });
         }
         if (!ADMIN_PASSWORD) {
             console.error("[auth] ADMIN_PASSWORD is not set in environment");
             return res.status(500).json({
                 success: false,
-                message: "Server is not configured (missing admin password). Contact administrator.",
+                message: "Server configuration error. Contact administrator.",
             });
         }
 
@@ -60,7 +59,7 @@ export const login = async (req, res) => {
         });
     } catch (error) {
         console.error("[auth] login error:", error);
-        return res.status(500).json({ success: false, message: error.message || "Login failed" });
+        return res.status(500).json({ success: false, message: "Login failed. Please try again." });
     }
 };
 

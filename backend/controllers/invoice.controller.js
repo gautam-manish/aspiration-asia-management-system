@@ -3,6 +3,7 @@ import SalesRecord from "../models/sales-record.model.js";
 import fs from "fs";
 import path from "path";
 import { ADVANCE_ROOT } from "../middleware/upload.middleware.js";
+import escapeRegex from "../utils/escapeRegex.js";
 
 // ─────────────────────────────────────────
 // Helper: generate a unique 8-digit ASA invoice number
@@ -36,7 +37,8 @@ export const getInvoiceByBookingId = async (req, res) => {
     }
     res.status(200).json({ success: true, message: "Invoice fetched successfully", data: invoice });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getInvoiceByBookingId error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch invoice.", data: null });
   }
 };
 
@@ -50,13 +52,14 @@ export const getInvoiceByNumber = async (req, res) => {
     if (!invoiceNumber) {
       return res.status(400).json({ success: false, message: "Invoice number is required", data: null });
     }
-    const invoice = await Invoice.findOne({ invoiceNumber: { $regex: `^${invoiceNumber}$`, $options: "i" } });
+    const invoice = await Invoice.findOne({ invoiceNumber: { $regex: `^${escapeRegex(invoiceNumber)}$`, $options: "i" } });
     if (!invoice) {
       return res.status(404).json({ success: false, message: "Invoice not found", data: null });
     }
     res.status(200).json({ success: true, message: "Invoice fetched successfully", data: invoice });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getInvoiceByNumber error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch invoice.", data: null });
   }
 };
 
@@ -69,7 +72,8 @@ export const getNextInvoiceNumber = async (req, res) => {
     const invoiceNumber = await generateUniqueInvoiceNumber();
     res.status(200).json({ success: true, message: "Next invoice number generated", data: { invoiceNumber } });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getNextInvoiceNumber error:", error);
+    res.status(500).json({ success: false, message: "Failed to generate invoice number.", data: null });
   }
 };
 
@@ -88,7 +92,8 @@ export const createInvoice = async (req, res) => {
     const invoice = await Invoice.create(payload);
     res.status(201).json({ success: true, message: "Invoice created successfully", data: invoice });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message, data: null });
+    console.error("createInvoice error:", error);
+    res.status(400).json({ success: false, message: "Failed to create invoice.", data: null });
   }
 };
 
@@ -104,10 +109,11 @@ export const getAllInvoices = async (req, res) => {
     const query = {};
 
     if (search) {
+      const escaped = escapeRegex(search);
       query.$or = [
-        { "billTo.name":  { $regex: search, $options: "i" } },
-        { bookingId:      { $regex: search, $options: "i" } },
-        { invoiceNumber:  { $regex: search, $options: "i" } },
+        { "billTo.name":  { $regex: escaped, $options: "i" } },
+        { bookingId:      { $regex: escaped, $options: "i" } },
+        { invoiceNumber:  { $regex: escaped, $options: "i" } },
       ];
     }
 
@@ -143,7 +149,8 @@ export const getAllInvoices = async (req, res) => {
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getAllInvoices error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch invoices.", data: null });
   }
 };
 
@@ -157,7 +164,8 @@ export const getInvoiceById = async (req, res) => {
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
     res.status(200).json({ success: true, message: "Invoice fetched successfully", data: invoice });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getInvoiceById error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch invoice.", data: null });
   }
 };
 
@@ -173,13 +181,24 @@ export const updateInvoice = async (req, res) => {
     // Invoice number is server-generated and immutable
     delete req.body.invoiceNumber;
 
+    // Whitelist allowed fields to prevent mass assignment
+    const allowedFields = [
+      "bookingId", "date", "billTo", "currency", "entries",
+      "subtotal", "discount", "total", "note",
+    ];
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+
     const invoice = await Invoice.findByIdAndUpdate(
-      req.params.id, { $set: req.body }, { returnDocument: 'after', runValidators: true }
+      req.params.id, { $set: updates }, { returnDocument: 'after', runValidators: true }
     );
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
     res.status(200).json({ success: true, message: "Invoice updated successfully", data: invoice });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message, data: null });
+    console.error("updateInvoice error:", error);
+    res.status(400).json({ success: false, message: "Failed to update invoice.", data: null });
   }
 };
 
@@ -193,7 +212,8 @@ export const deleteInvoice = async (req, res) => {
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
     res.status(200).json({ success: true, message: "Invoice deleted successfully", data: null });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("deleteInvoice error:", error);
+    res.status(500).json({ success: false, message: "Failed to delete invoice.", data: null });
   }
 };
 
@@ -219,7 +239,8 @@ export const uploadAdvanceSlip = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("uploadAdvanceSlip error:", error);
+    return res.status(500).json({ success: false, message: "Failed to upload slip.", data: null });
   }
 };
 
@@ -297,7 +318,8 @@ export const addAdvancePayment = async (req, res) => {
 
     res.status(201).json({ success: true, message: "Advance payment added", data: invoice });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message, data: null });
+    console.error("addAdvancePayment error:", error);
+    res.status(400).json({ success: false, message: "Failed to add advance payment.", data: null });
   }
 };
 
@@ -357,6 +379,7 @@ export const removeAdvancePayment = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Advance payment removed", data: invoice });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("removeAdvancePayment error:", error);
+    res.status(500).json({ success: false, message: "Failed to remove advance payment.", data: null });
   }
 };

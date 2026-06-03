@@ -1,6 +1,7 @@
 // Controller/purchaserecordController.js
 
 import PurchaseRecord from "../models/purchase-record.model.js";
+import escapeRegex from "../utils/escapeRegex.js";
 
 // ─────────────────────────────────────────────
 // Utility
@@ -26,7 +27,7 @@ export const getAllPurchaseRecords = async (req, res) => {
     const filter = search
       ? {
           debtorName: {
-            $regex: search,
+            $regex: escapeRegex(search),
             $options: "i",
           },
         }

@@ -1,4 +1,5 @@
 import Booking from "../models/booking.model.js";
+import escapeRegex from "../utils/escapeRegex.js";
 
 // ─────────────────────────────────────────
 // Helper: generate next Booking ID
@@ -34,9 +35,10 @@ export const getNextBookingId = async (req, res) => {
         queryId,
       });
   } catch (error) {
+    console.error("getNextBookingId error:", error);
     res
       .status(500)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to generate booking ID.", data: null });
   }
 };
 
@@ -131,9 +133,10 @@ export const createBooking = async (req, res) => {
         data: booking,
       });
   } catch (error) {
+    console.error("createBooking error:", error);
     res
       .status(500)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to create booking.", data: null });
   }
 };
 
@@ -158,9 +161,9 @@ export const getAllBookings = async (req, res) => {
     // Search filter: clientName OR queryId OR destination
     if (search) {
       filter.$or = [
-        { clientName: { $regex: search, $options: "i" } },
-        { queryId: { $regex: search, $options: "i" } },
-        { destination: { $regex: search, $options: "i" } },
+        { clientName: { $regex: escapeRegex(search), $options: "i" } },
+        { queryId: { $regex: escapeRegex(search), $options: "i" } },
+        { destination: { $regex: escapeRegex(search), $options: "i" } },
       ];
     }
 
@@ -194,9 +197,10 @@ export const getAllBookings = async (req, res) => {
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
+    console.error("getAllBookings error:", error);
     res
       .status(500)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to fetch bookings.", data: null });
   }
 };
 
@@ -220,9 +224,10 @@ export const getBookingById = async (req, res) => {
         data: booking,
       });
   } catch (error) {
+    console.error("getBookingById error:", error);
     res
       .status(500)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to fetch booking.", data: null });
   }
 };
 
@@ -236,13 +241,14 @@ export const getBookingByQueryId = async (req, res) => {
     if (!queryId) {
       return res.status(400).json({ success: false, message: "Booking ID is required", data: null });
     }
-    const booking = await Booking.findOne({ queryId: { $regex: `^${queryId}$`, $options: "i" } });
+    const booking = await Booking.findOne({ queryId: { $regex: `^${escapeRegex(queryId)}$`, $options: "i" } });
     if (!booking) {
       return res.status(404).json({ success: false, message: "Booking not found", data: null });
     }
     res.status(200).json({ success: true, message: "Booking fetched successfully", data: booking });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getBookingByQueryId error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch booking.", data: null });
   }
 };
 
@@ -265,6 +271,19 @@ export const updateBooking = async (req, res) => {
     // Prevent queryId from being changed
     delete req.body.queryId;
 
+    // Whitelist allowed fields to prevent mass assignment
+    const allowedFields = [
+      "clientName", "companyName", "email", "mobile", "address",
+      "destination", "pickupPoint", "dropPoint",
+      "arrivalDate", "departureDate", "noOfDays",
+      "adults", "childEB", "childNoEB", "childU5",
+      "rooms", "hotelCategory", "mealPlan", "status",
+    ];
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+
     // Prevent re-confirming a cancelled booking via full update
     const existing = await Booking.findById(req.params.id);
     if (!existing) {
@@ -275,7 +294,7 @@ export const updateBooking = async (req, res) => {
 
     const booking = await Booking.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
+      { $set: updates },
       { returnDocument: "after", runValidators: true },
     );
 
@@ -287,9 +306,10 @@ export const updateBooking = async (req, res) => {
         data: booking,
       });
   } catch (error) {
+    console.error("updateBooking error:", error);
     res
       .status(400)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to update booking.", data: null });
   }
 };
 
@@ -328,9 +348,10 @@ export const updateBookingStatus = async (req, res) => {
         data: booking,
       });
   } catch (error) {
+    console.error("updateBookingStatus error:", error);
     res
       .status(500)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to update booking status.", data: null });
   }
 };
 
@@ -374,6 +395,7 @@ export const saveItinerary = async (req, res) => {
       data: booking,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("saveItinerary error:", error);
+    res.status(500).json({ success: false, message: "Failed to save itinerary.", data: null });
   }
 };

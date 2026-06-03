@@ -1,4 +1,5 @@
 import Sundry from "../models/sundry.model.js";
+import escapeRegex from "../utils/escapeRegex.js";
 
 // ─────────────────────────────────────────
 // Helpers — field validation + duplicate check
@@ -82,8 +83,9 @@ function buildDuplicateQuery(data, ignoreId = null) {
   return query;
 }
 
+// Use shared escapeRegex from utils (the local copy is replaced)
 function escapeRx(v) {
-  return String(v || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return escapeRegex(v);
 }
 
 // Friendly message describing which field collided
@@ -120,7 +122,8 @@ export const createSundry = async (req, res) => {
     const entry = await Sundry.create(data);
     res.status(201).json({ success: true, message: "Sundry entry created successfully", data: entry });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("createSundry error:", error);
+    res.status(500).json({ success: false, message: "Failed to create sundry entry.", data: null });
   }
 };
 
@@ -137,8 +140,8 @@ export const getAllSundry = async (req, res) => {
 
     if (search) {
       filter.$or = [
-        { companyName:   { $regex: search, $options: "i" } },
-        { contactPerson: { $regex: search, $options: "i" } },
+        { companyName:   { $regex: escapeRegex(search), $options: "i" } },
+        { contactPerson: { $regex: escapeRegex(search), $options: "i" } },
       ];
     }
 
@@ -168,7 +171,8 @@ export const getAllSundry = async (req, res) => {
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getAllSundry error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch sundry entries.", data: null });
   }
 };
 
@@ -190,7 +194,8 @@ export const getSundryDropdown = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Sundry dropdown fetched", data: entries });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getSundryDropdown error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch dropdown.", data: null });
   }
 };
 
@@ -206,7 +211,8 @@ export const getSundryById = async (req, res) => {
     }
     res.status(200).json({ success: true, message: "Sundry entry fetched successfully", data: entry });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getSundryById error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch sundry entry.", data: null });
   }
 };
 
@@ -245,6 +251,7 @@ export const updateSundry = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Sundry entry updated successfully", data: entry });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message, data: null });
+    console.error("updateSundry error:", error);
+    res.status(400).json({ success: false, message: "Failed to update sundry entry.", data: null });
   }
 };

@@ -1,4 +1,5 @@
 import Hotel from "../models/hotel.model.js";
+import escapeRegex from "../utils/escapeRegex.js";
 
 // ─────────────────────────────────────────
 // @desc    Create a new Hotel
@@ -11,8 +12,8 @@ export const createHotel = async (req, res) => {
 
     // ── Duplicate Check ──────────────────────────
     const existingHotel = await Hotel.findOne({
-      name: { $regex: `^${name}$`, $options: "i" },
-      city: { $regex: `^${city}$`, $options: "i" },
+      name: { $regex: `^${escapeRegex(name)}$`, $options: "i" },
+      city: { $regex: `^${escapeRegex(city)}$`, $options: "i" },
     });
 
     if (existingHotel) {
@@ -32,9 +33,10 @@ export const createHotel = async (req, res) => {
       data: hotel,
     });
   } catch (error) {
+    console.error("createHotel error:", error);
     res.status(400).json({
       success: false,
-      message: error.message,
+      message: "Failed to create hotel.",
       data: null,
     });
   }
@@ -52,7 +54,7 @@ export const getAllHotels = async (req, res) => {
 
     const query = {};
     if (search) {
-      query.name = { $regex: search, $options: "i" };
+      query.name = { $regex: escapeRegex(search), $options: "i" };
     }
 
     // Detect whether the client wants pagination. If neither page nor limit was
@@ -89,9 +91,10 @@ export const getAllHotels = async (req, res) => {
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
+    console.error("getAllHotels error:", error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to fetch hotels.",
       data: null,
     });
   }
@@ -120,9 +123,10 @@ export const getHotelById = async (req, res) => {
       data: hotel,
     });
   } catch (error) {
+    console.error("getHotelById error:", error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to fetch hotel.",
       data: null,
     });
   }
@@ -151,8 +155,8 @@ export const updateHotel = async (req, res) => {
     // ── Duplicate Check ──────────────────────────
     const existingHotel = await Hotel.findOne({
       _id: { $ne: req.params.id },
-      name: { $regex: `^${name}$`, $options: "i" },
-      city: { $regex: `^${city}$`, $options: "i" },
+      name: { $regex: `^${escapeRegex(name)}$`, $options: "i" },
+      city: { $regex: `^${escapeRegex(city)}$`, $options: "i" },
     });
 
     if (existingHotel) {
@@ -164,9 +168,16 @@ export const updateHotel = async (req, res) => {
     }
     // ─────────────────────────────────────────────
 
+    // Whitelist allowed fields to prevent mass assignment
+    const allowedFields = ["name", "country", "city", "contactNumbers", "googleMapUrl", "costPerRoom"];
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+
     const hotel = await Hotel.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
+      { $set: updates },
       { returnDocument: 'after', runValidators: true }
     );
 
@@ -184,9 +195,10 @@ export const updateHotel = async (req, res) => {
       data: hotel,
     });
   } catch (error) {
+    console.error("updateHotel error:", error);
     res.status(400).json({
       success: false,
-      message: error.message,
+      message: "Failed to update hotel.",
       data: null,
     });
   }
@@ -215,9 +227,10 @@ export const deleteHotel = async (req, res) => {
       data: null,
     });
   } catch (error) {
+    console.error("deleteHotel error:", error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to delete hotel.",
       data: null,
     });
   }

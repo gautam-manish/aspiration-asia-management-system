@@ -1,6 +1,33 @@
+# Dependencies
 node_modules/
 
-.DS_Store
-*.log
+# Environment variables
 .env
+.env.local
+.env.production
+.env.*.local
 
+# Build output
+frontend/dist/
+
+# Uploaded files (should be outside repo in production)
+uploads/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage & testing
+coverage/
+.nyc_output/

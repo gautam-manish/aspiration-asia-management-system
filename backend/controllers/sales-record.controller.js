@@ -2,6 +2,7 @@ import SalesRecord from "../models/sales-record.model.js";
 import fs from "fs";
 import path from "path";
 import { UPLOAD_ROOT } from "../middleware/upload.middleware.js";
+import escapeRegex from "../utils/escapeRegex.js";
 
 // ─────────────────────────────────────────
 //  Helper: sanitise payment entries array
@@ -76,7 +77,8 @@ export const createSalesRecord = async (req, res) => {
     if (error.code === 11000) {
       return res.status(409).json({ success: false, message: "A record with this invoice number already exists", data: null });
     }
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("createSalesRecord error:", error);
+    res.status(500).json({ success: false, message: "Failed to create sales record.", data: null });
   }
 };
 
@@ -92,9 +94,10 @@ export const getAllSalesRecords = async (req, res) => {
     const filter = {};
 
     if (search) {
+      const escaped = escapeRegex(search);
       filter.$or = [
-        { clientName:    { $regex: search, $options: "i" } },
-        { invoiceNumber: { $regex: search, $options: "i" } },
+        { clientName:    { $regex: escaped, $options: "i" } },
+        { invoiceNumber: { $regex: escaped, $options: "i" } },
       ];
     }
 
@@ -124,7 +127,8 @@ export const getAllSalesRecords = async (req, res) => {
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getAllSalesRecords error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch sales records.", data: null });
   }
 };
 
@@ -140,7 +144,8 @@ export const getSalesRecordById = async (req, res) => {
     }
     res.status(200).json({ success: true, message: "Sales record fetched successfully", data: record });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getSalesRecordById error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch sales record.", data: null });
   }
 };
 
@@ -162,7 +167,8 @@ export const getSalesRecordByInvoiceNumber = async (req, res) => {
     }
     res.status(200).json({ success: true, message: "Sales record fetched successfully", data: record });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getSalesRecordByInvoiceNumber error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch sales record.", data: null });
   }
 };
 
@@ -211,7 +217,8 @@ export const updateSalesRecord = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Sales record updated successfully", data: record });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message, data: null });
+    console.error("updateSalesRecord error:", error);
+    res.status(400).json({ success: false, message: "Failed to update sales record.", data: null });
   }
 };
 
@@ -227,7 +234,8 @@ export const deleteSalesRecord = async (req, res) => {
     }
     res.status(200).json({ success: true, message: "Sales record deleted successfully", data: null });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("deleteSalesRecord error:", error);
+    res.status(500).json({ success: false, message: "Failed to delete sales record.", data: null });
   }
 };
 
@@ -256,7 +264,8 @@ export const uploadPaymentSlip = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("uploadPaymentSlip error:", error);
+    return res.status(500).json({ success: false, message: "Failed to upload slip.", data: null });
   }
 };
 
@@ -276,6 +285,7 @@ export const removePaymentSlip = async (req, res) => {
     fs.promises.unlink(filePath).catch(() => { /* file may already be gone */ });
     return res.status(200).json({ success: true, message: "Slip removed", data: null });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("removePaymentSlip error:", error);
+    return res.status(500).json({ success: false, message: "Failed to remove slip.", data: null });
   }
 };

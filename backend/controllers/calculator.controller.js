@@ -15,9 +15,10 @@ export const createCalculator = async (req, res) => {
         data: record,
       });
   } catch (error) {
+    console.error("createCalculator error:", error);
     res
       .status(400)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to create record.", data: null });
   }
 };
 
@@ -36,9 +37,10 @@ export const getAllCalculators = async (req, res) => {
         data: records,
       });
   } catch (error) {
+    console.error("getAllCalculators error:", error);
     res
       .status(500)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to fetch records.", data: null });
   }
 };
 
@@ -61,9 +63,10 @@ export const getCalculatorById = async (req, res) => {
         data: record,
       });
   } catch (error) {
+    console.error("getCalculatorById error:", error);
     res
       .status(500)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to fetch record.", data: null });
   }
 };
 
@@ -77,9 +80,19 @@ export const updateCalculator = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "No data provided", data: null });
+
+    // Whitelist allowed fields to prevent mass assignment
+    const allowedFields = [
+      "agency", "clientDetails", "accommodation", "costs", "total",
+    ];
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+
     const record = await Calculator.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
+      { $set: updates },
       { returnDocument: "after", runValidators: true },
     );
     if (!record)
@@ -94,9 +107,10 @@ export const updateCalculator = async (req, res) => {
         data: record,
       });
   } catch (error) {
+    console.error("updateCalculator error:", error);
     res
       .status(400)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to update record.", data: null });
   }
 };
 
@@ -119,8 +133,9 @@ export const deleteCalculator = async (req, res) => {
         data: null,
       });
   } catch (error) {
+    console.error("deleteCalculator error:", error);
     res
       .status(500)
-      .json({ success: false, message: error.message, data: null });
+      .json({ success: false, message: "Failed to delete record.", data: null });
   }
 };

@@ -1,13 +1,24 @@
 import Reservation from "../models/reservation.model.js";
 import nodemailer from "nodemailer";
+import escapeRegex from "../utils/escapeRegex.js";
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "manishgtm123@gmail.com",
-    pass: "dtrvlufskttkgxvl",
-  },
-});
+// Use the SAME env-driven credentials as email.controller.js
+const MAIL_USER = process.env.MAIL_USER;
+const MAIL_PASS = process.env.MAIL_PASS;
+
+let transporter = null;
+function getTransporter() {
+  if (!MAIL_USER || !MAIL_PASS) {
+    throw new Error("Mail is not configured (MAIL_USER / MAIL_PASS missing in environment)");
+  }
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: MAIL_USER, pass: MAIL_PASS },
+    });
+  }
+  return transporter;
+}
 
 const safe = (v) => (v === undefined || v === null || v === "") ? "" : String(v);
 
@@ -78,9 +89,9 @@ export const createReservation = async (req, res) => {
   </div>
 </div>`;
 
-    await transporter.sendMail({
-      from: "manishgtm123@gmail.com",
-      to: to.join(", "),
+    await getTransporter().sendMail({
+      from: MAIL_USER,
+      to: Array.isArray(to) ? to.join(", ") : to,
       subject: subject || "Hotel Reservation",
       html,
     });
@@ -91,8 +102,8 @@ export const createReservation = async (req, res) => {
       data: reservation,
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("createReservation error:", error);
+    res.status(500).json({ success: false, message: "Failed to create reservation.", data: null });
   }
 };
 
@@ -108,7 +119,7 @@ export const getAllReservations = async (req, res) => {
     const query = {};
 
     if (search) {
-      query.bookingName = { $regex: search, $options: "i" };
+      query.bookingName = { $regex: escapeRegex(search), $options: "i" };
     }
 
     if (date) {
@@ -145,7 +156,8 @@ export const getAllReservations = async (req, res) => {
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getAllReservations error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch reservations.", data: null });
   }
 };
 
@@ -161,7 +173,8 @@ export const getReservationById = async (req, res) => {
     }
     res.status(200).json({ success: true, message: "Reservation fetched successfully", data: reservation });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getReservationById error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch reservation.", data: null });
   }
 };
 
@@ -174,9 +187,15 @@ export const updateReservation = async (req, res) => {
     if (Object.keys(req.body).length === 0) {
       return res.status(400).json({ success: false, message: "No data provided to update", data: null });
     }
+    // Whitelist allowed fields to prevent mass assignment
+    const allowedFields = ["bookingName", "nationality", "pax", "room", "visits", "note", "emailTo", "subject"];
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
     const reservation = await Reservation.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
+      { $set: updates },
       { returnDocument: 'after', runValidators: true }
     );
     if (!reservation) {
@@ -184,6 +203,7 @@ export const updateReservation = async (req, res) => {
     }
     res.status(200).json({ success: true, message: "Reservation updated successfully", data: reservation });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message, data: null });
+    console.error("updateReservation error:", error);
+    res.status(400).json({ success: false, message: "Failed to update reservation.", data: null });
   }
 };

@@ -1,5 +1,6 @@
 import CashReceipt from "../models/cash-receipt.model.js";
-import Counter from "../models/counter.model.js"; // ✅ ADD THIS
+import Counter from "../models/counter.model.js";
+import escapeRegex from "../utils/escapeRegex.js";
 
 // ─────────────────────────────────────────
 // @desc    Create Cash Receipt
@@ -25,7 +26,8 @@ export const createCashReceipt = async (req, res) => {
 
     res.status(201).json({ success: true, message: "Cash receipt created successfully", data: receipt });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message, data: null });
+    console.error("createCashReceipt error:", error);
+    res.status(400).json({ success: false, message: "Failed to create cash receipt.", data: null });
   }
 };
 
@@ -40,7 +42,7 @@ export const getAllCashReceipts = async (req, res) => {
     const { search, date, page, limit } = req.query;
     const query = {};
 
-    if (search) query.name = { $regex: search, $options: "i" };
+    if (search) query.name = { $regex: escapeRegex(search), $options: "i" };
 
     if (date) {
       const start = new Date(date); start.setHours(0, 0, 0, 0);
@@ -74,7 +76,8 @@ export const getAllCashReceipts = async (req, res) => {
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getAllCashReceipts error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch cash receipts.", data: null });
   }
 };
 
@@ -88,7 +91,8 @@ export const getCashReceiptById = async (req, res) => {
     if (!receipt) return res.status(404).json({ success: false, message: "Cash receipt not found", data: null });
     res.status(200).json({ success: true, message: "Cash receipt fetched successfully", data: receipt });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getCashReceiptById error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch cash receipt.", data: null });
   }
 };
 
@@ -102,6 +106,7 @@ export const deleteCashReceipt = async (req, res) => {
     if (!receipt) return res.status(404).json({ success: false, message: "Cash receipt not found", data: null });
     res.status(200).json({ success: true, message: "Cash receipt deleted successfully", data: null });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("deleteCashReceipt error:", error);
+    res.status(500).json({ success: false, message: "Failed to delete cash receipt.", data: null });
   }
 };

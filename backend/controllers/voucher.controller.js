@@ -1,4 +1,5 @@
 import Voucher from "../models/voucher.model.js";
+import escapeRegex from "../utils/escapeRegex.js";
 
 // ─────────────────────────────────────────
 // @desc    Create Voucher
@@ -27,7 +28,8 @@ export const createVoucher = async (req, res) => {
 
     res.status(201).json({ success: true, message: "Voucher created successfully", data: voucher });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("createVoucher error:", error);
+    res.status(500).json({ success: false, message: "Failed to create voucher.", data: null });
   }
 };
 
@@ -43,7 +45,7 @@ export const getAllVouchers = async (req, res) => {
     const query = {};
 
     if (search) {
-      query.guestName = { $regex: search, $options: "i" };
+      query.guestName = { $regex: escapeRegex(search), $options: "i" };
     }
 
     if (date) {
@@ -84,7 +86,8 @@ export const getAllVouchers = async (req, res) => {
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getAllVouchers error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch vouchers.", data: null });
   }
 };
 
@@ -100,7 +103,8 @@ export const getVoucherById = async (req, res) => {
     }
     res.status(200).json({ success: true, message: "Voucher fetched successfully", data: voucher });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getVoucherById error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch voucher.", data: null });
   }
 };
 
@@ -120,7 +124,8 @@ export const getVoucherByBookingId = async (req, res) => {
     }
     res.status(200).json({ success: true, message: "Voucher fetched successfully", data: voucher });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message, data: null });
+    console.error("getVoucherByBookingId error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch voucher.", data: null });
   }
 };
 
@@ -134,9 +139,20 @@ export const updateVoucher = async (req, res) => {
       return res.status(400).json({ success: false, message: "No data provided to update", data: null });
     }
 
+    // Whitelist allowed fields to prevent mass assignment
+    const allowedFields = [
+      "guestName", "nationality", "bookingId", "contactNumber",
+      "mealInstruction", "wheelChair", "arrivalFlightDetails",
+      "preferredFloor", "pax", "hotels",
+    ];
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+
     const voucher = await Voucher.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
+      { $set: updates },
       { returnDocument: "after", runValidators: true }
     );
 
@@ -146,6 +162,7 @@ export const updateVoucher = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Voucher updated successfully", data: voucher });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message, data: null });
+    console.error("updateVoucher error:", error);
+    res.status(400).json({ success: false, message: "Failed to update voucher.", data: null });
   }
 };

@@ -31,3 +31,5 @@ npm-debug.log*
 # Coverage & testing
 coverage/
 .nyc_output/
+
+docs/

@@ -6,7 +6,13 @@
   "type": "module",
   "scripts": {
     "start": "node app.js",
-    "dev": "node --watch app.js"
+    "dev": "node --watch app.js",
+    "test": "node --test",
+    "db:indexes": "node scripts/ensure-production-indexes.js",
+    "audit:accounting": "node scripts/reconcile-accounting.js",
+    "audit:diagnose": "node scripts/diagnose-accounting.js",
+    "audit:repair-invoices": "node scripts/repair-invoice-journals.js",
+    "smoke:api": "node scripts/smoke-api.js"
   },
   "dependencies": {
     "compression": "^1.8.1",

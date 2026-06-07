@@ -5,10 +5,34 @@ import { invoiceAPI, bookingAPI } from "../../api";
 import { todayString, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useInvoicesPaginated, useInvoiceMutations } from "../../hooks/useApiQueries";
+import { useInvoicesPaginated, useInvoiceMutations, useSundryDropdown } from "../../hooks/useApiQueries";
+import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 
 const EMPTY_LINE = { description: "", details: "", qty: 1, rate: 0, amount: 0 };
+
+const addDays = (date, days) => {
+  const d = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + Math.max(0, Number(days) || 0));
+  return d.toISOString().slice(0, 10);
+};
+
+const paymentStatusClass = {
+  paid: "badge-green",
+  partial: "badge-blue",
+  overdue: "badge-red",
+  unpaid: "badge-yellow",
+  draft: "badge-gray",
+};
+
+const paymentStatusLabel = {
+  paid: "Paid",
+  partial: "Partial",
+  overdue: "Overdue",
+  unpaid: "Unpaid",
+  draft: "Draft",
+};
 
 export function InvoiceModal({ invoice, onClose, onSaved }) {
   const isEdit = !!invoice;
@@ -18,7 +42,10 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       return {
         invoiceNumber: invoice.invoiceNumber || "",
         invoiceDate:   invoice.invoiceDate   || todayString(),
+        paymentTermsDays: invoice.paymentTermsDays ?? 0,
+        dueDate: invoice.dueDate || addDays(invoice.invoiceDate || todayString(), invoice.paymentTermsDays ?? 0),
         bookingId:     invoice.bookingId     || "",
+        customerId:    invoice.customerId    || "",
         from: {
           name:     invoice.from?.name     || "Aspiration AISA",
           email:    invoice.from?.email    || "account@aspirationasia.com",
@@ -53,7 +80,10 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
     return {
       invoiceNumber: "",
       invoiceDate: todayString(),
+      paymentTermsDays: 0,
+      dueDate: todayString(),
       bookingId: "",
+      customerId: "",
       from: {
         name: "Aspiration AISA",
         email: "account@aspirationasia.com",
@@ -74,6 +104,9 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
   const [form, setForm] = useState(buildInitial());
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  const [partyOpen, setPartyOpen] = useState(false);
+  const [partySearch, setPartySearch] = useState("");
+  const { data: parties = [] } = useSundryDropdown();
 
   // Fetch a unique server-generated invoice number when creating a new invoice
   useEffect(() => {
@@ -86,6 +119,30 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setFrom  = (k, v) => setForm((f) => ({ ...f, from:   { ...f.from,   [k]: v } }));
   const setBill  = (k, v) => setForm((f) => ({ ...f, billTo: { ...f.billTo, [k]: v } }));
+  const setInvoiceDate = (value) => setForm((f) => ({ ...f, invoiceDate: value, dueDate: addDays(value, f.paymentTermsDays) }));
+  const setPaymentTerms = (value) => setForm((f) => ({ ...f, paymentTermsDays: value, dueDate: addDays(f.invoiceDate, value) }));
+
+  const filteredParties = parties.filter((p) => {
+    const q = partySearch.trim().toLowerCase();
+    if (!q) return true;
+    return [p.contactPerson, p.companyName, p.partyCode, p.email, p.phone]
+      .some((v) => String(v || "").toLowerCase().includes(q));
+  });
+
+  const selectParty = (party) => {
+    setForm((f) => ({
+      ...f,
+      customerId: party._id || "",
+      billTo: {
+        name: party.contactPerson || f.billTo.name,
+        email: party.email || f.billTo.email,
+        address: party.address || f.billTo.address,
+        mobile: party.phone || f.billTo.mobile,
+      },
+    }));
+    setPartySearch("");
+    setPartyOpen(false);
+  };
 
   const lookupBooking = async () => {
     const id = (form.bookingId || "").trim();
@@ -97,6 +154,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       setForm((f) => ({
         ...f,
         bookingId: b.queryId || id,
+        customerId: b.customerId || f.customerId || "",
         billTo: {
           name:    b.clientName || f.billTo.name,
           email:   b.email      || f.billTo.email,
@@ -175,7 +233,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-5">
             {/* Header row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <Field label="Invoice Number" required>
                 <input
                   className="input bg-slate-50 font-mono text-brand-600 cursor-not-allowed"
@@ -185,7 +243,19 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
                 />
               </Field>
               <Field label="Invoice Date" required>
-                <input className="input" type="date" value={form.invoiceDate} onChange={(e) => setField("invoiceDate", e.target.value)} required />
+                <input className="input" type="date" value={form.invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required />
+              </Field>
+              <Field label="Terms (Days)">
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  value={form.paymentTermsDays}
+                  onChange={(e) => setPaymentTerms(e.target.value)}
+                />
+              </Field>
+              <Field label="Due Date">
+                <input className="input" type="date" value={form.dueDate} onChange={(e) => setField("dueDate", e.target.value)} />
               </Field>
               <Field label="Currency" required>
                 <select
@@ -238,6 +308,50 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
               {/* Bill To */}
               <div className="space-y-3">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Bill To</p>
+                <Field label="Customer / Party">
+                  <div className="relative">
+                    <div
+                      className="input cursor-pointer flex items-center justify-between"
+                      onClick={() => setPartyOpen((v) => !v)}
+                    >
+                      <span className={form.billTo.name ? "text-slate-800" : "text-slate-400"}>
+                        {form.billTo.name || "Select customer..."}
+                      </span>
+                      <i className={`fa fa-chevron-${partyOpen ? "up" : "down"} text-xs text-slate-400`} />
+                    </div>
+                    {partyOpen && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+                        <div className="sticky top-0 bg-white border-b border-slate-100 p-2">
+                          <input
+                            autoFocus
+                            type="text"
+                            className="input text-sm"
+                            placeholder="Search parties..."
+                            value={partySearch}
+                            onChange={(e) => setPartySearch(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        {filteredParties.length === 0 ? (
+                          <div className="p-3 text-sm text-slate-400 text-center">No parties found</div>
+                        ) : (
+                          filteredParties.map((p) => (
+                            <button
+                              key={p._id}
+                              type="button"
+                              className="w-full text-left px-3 py-2 hover:bg-brand-50 transition-colors border-b border-slate-50 last:border-b-0"
+                              onClick={() => selectParty(p)}
+                            >
+                              <p className="text-sm font-medium text-slate-800">{p.contactPerson}</p>
+                              {p.companyName && <p className="text-xs text-slate-400">{p.companyName}</p>}
+                              {p.partyCode && <p className="text-xs text-slate-400 font-mono">{p.partyCode}</p>}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </Field>
                 {[["name","Client Name"],["email","Email"],["address","Address"],["mobile","Mobile"]].map(([k,l]) => (
                   <Field key={k} label={l} required={k==="name"}>
                     <input className="input" value={form.billTo[k]} onChange={(e) => setBill(k, e.target.value)} required={k==="name"} />
@@ -409,6 +523,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
 export default function InvoicesPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [search, setSearch]   = useState("");
   const [date, setDate]       = useState("");
   const [page, setPage]       = useState(1);
@@ -416,6 +531,7 @@ export default function InvoicesPage() {
   const [confirm, setConfirm] = useState(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => { setPage(1); }, [debouncedSearch, date]);
 
@@ -469,23 +585,39 @@ export default function InvoicesPage() {
             <div className="table-wrapper">
               <table className="table">
                 <thead><tr>
-                  <th>Invoice #</th><th>Booking ID</th><th>Date</th><th>Bill To</th><th>Total</th><th>Actions</th>
+                  <th>Invoice #</th><th>Booking ID</th><th>Invoice / Due</th><th>Bill To</th><th>Total</th><th>Status</th><th>Actions</th>
                 </tr></thead>
                 <tbody>
                   {list.map((inv) => (
                     <tr key={inv._id}>
                       <td className="font-mono text-xs text-brand-600 font-medium">{inv.invoiceNumber}</td>
                       <td className="font-mono text-xs text-slate-600">{inv.bookingId || "—"}</td>
-                      <td className="text-xs text-slate-500">{inv.invoiceDate}</td>
+                      <td className="text-xs text-slate-500">
+                        <p>{inv.invoiceDate}</p>
+                        <p className="text-slate-400">Due {inv.dueDate || inv.invoiceDate}</p>
+                      </td>
                       <td>
                         <p className="font-medium text-slate-800">{inv.billTo?.name}</p>
                         <p className="text-xs text-slate-400">{inv.billTo?.email}</p>
                       </td>
-                      <td className="font-semibold text-slate-800">{inv.currency} {Number(inv.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td>
+                        <p className="font-semibold text-slate-800">{inv.currency} {Number(inv.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                        <p className="text-xs text-slate-400">
+                          Bal {inv.currency} {Number(inv.paymentSummary?.balance ?? inv.total ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                      </td>
+                      <td>
+                        <span className={paymentStatusClass[inv.paymentSummary?.status] || "badge-gray"}>
+                          {paymentStatusLabel[inv.paymentSummary?.status] || "Unknown"}
+                        </span>
+                        {inv.paymentSummary?.overdueDays > 0 && (
+                          <p className="text-xs text-red-500 mt-1">{inv.paymentSummary.overdueDays} days late</p>
+                        )}
+                      </td>
                       <td>
                         <div className="flex gap-1">
                           <button onClick={() => navigate(`/invoices/${inv._id}`)} className="btn-ghost text-xs py-1 px-2"><i className="fa fa-eye" /></button>
-                          <button onClick={() => setConfirm(inv)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2"><i className="fa fa-trash-alt" /></button>
+                          {isAdmin && <button onClick={() => setConfirm(inv)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2"><i className="fa fa-trash-alt" /></button>}
                         </div>
                       </td>
                     </tr>

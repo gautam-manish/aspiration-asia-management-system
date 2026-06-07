@@ -49,7 +49,7 @@ export function AuthProvider({ children }) {
 
   const login = async (credentials) => {
     const { data } = await authAPI.login(credentials);
-    const u = { username: credentials.username, role: "admin" };
+    const u = data.user || { username: credentials.username, role: "admin" };
     localStorage.setItem("token", data.token);
     try { localStorage.setItem("user", JSON.stringify(u)); } catch { /* ignore */ }
     setToken(data.token);

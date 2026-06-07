@@ -4,6 +4,9 @@ import fs from "fs";
 import path from "path";
 import { ADVANCE_ROOT } from "../middleware/upload.middleware.js";
 import escapeRegex from "../utils/escapeRegex.js";
+import CustomerPayment from "../models/customer-payment.model.js";
+import { createCustomerPaymentFromInvoiceAdvance } from "./customer-payment.controller.js";
+import { postInvoiceJournal, reverseJournalEntry } from "../services/journal.service.js";
 
 // ─────────────────────────────────────────
 // Helper: generate a unique 8-digit ASA invoice number
@@ -20,6 +23,120 @@ async function generateUniqueInvoiceNumber() {
   throw new Error("Failed to generate unique invoice number after 10 attempts");
 }
 
+const toDateOnly = (value) => {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+};
+
+const calculateDueDate = (invoiceDate, paymentTermsDays = 0) => {
+  const cleanDate = toDateOnly(invoiceDate);
+  if (!cleanDate) return "";
+  const d = new Date(`${cleanDate}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + Math.max(0, Number(paymentTermsDays) || 0));
+  return d.toISOString().slice(0, 10);
+};
+
+const applyInvoiceTerms = (payload = {}) => {
+  const next = { ...payload };
+  next.paymentTermsDays = Math.max(0, Number(next.paymentTermsDays) || 0);
+  next.dueDate = toDateOnly(next.dueDate) || calculateDueDate(next.invoiceDate, next.paymentTermsDays);
+  return next;
+};
+
+const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+const daysBetween = (from, to) => {
+  const a = new Date(`${from}T00:00:00.000Z`);
+  const b = new Date(`${to}T00:00:00.000Z`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+  return Math.max(0, Math.floor((b - a) / (1000 * 60 * 60 * 24)));
+};
+
+const invoicePaymentStatus = ({ total, paid, balance, dueDate, today }) => {
+  if (total <= 0) return "draft";
+  if (balance <= 0.009) return "paid";
+  if (dueDate && dueDate < today) return "overdue";
+  if (paid > 0) return "partial";
+  return "unpaid";
+};
+
+const attachPaymentSummary = async (invoicesInput) => {
+  const isArray = Array.isArray(invoicesInput);
+  const invoices = isArray ? invoicesInput : [invoicesInput].filter(Boolean);
+  if (invoices.length === 0) return isArray ? [] : null;
+
+  const invoiceObjects = invoices.map((invoice) => (
+    typeof invoice.toObject === "function" ? invoice.toObject() : { ...invoice }
+  ));
+  const invoiceIds = invoiceObjects.map((invoice) => invoice._id).filter(Boolean);
+  const invoiceNumbers = invoiceObjects
+    .map((invoice) => String(invoice.invoiceNumber || "").toUpperCase())
+    .filter(Boolean);
+
+  const payments = await CustomerPayment.find({
+    status: "posted",
+    $or: [
+      { invoiceId: { $in: invoiceIds } },
+      { invoiceNumber: { $in: invoiceNumbers } },
+    ],
+  }).select("invoiceId invoiceNumber amount source sourceRef").lean();
+
+  const paidByInvoiceId = new Map();
+  const paidByInvoiceNumber = new Map();
+  const advanceRefsByInvoiceId = new Map();
+  const advanceRefsByInvoiceNumber = new Map();
+
+  for (const payment of payments) {
+    const amount = Number(payment.amount) || 0;
+    const idKey = payment.invoiceId ? String(payment.invoiceId) : "";
+    const numberKey = payment.invoiceNumber ? String(payment.invoiceNumber).toUpperCase() : "";
+    const paidMap = idKey ? paidByInvoiceId : paidByInvoiceNumber;
+    const paidKey = idKey || numberKey;
+    if (!paidKey) continue;
+    paidMap.set(paidKey, (paidMap.get(paidKey) || 0) + amount);
+
+    if (payment.source === "invoice-advance" && payment.sourceRef) {
+      const refMap = idKey ? advanceRefsByInvoiceId : advanceRefsByInvoiceNumber;
+      const refs = refMap.get(paidKey) || new Set();
+      refs.add(String(payment.sourceRef));
+      refMap.set(paidKey, refs);
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const enriched = invoiceObjects.map((invoice) => {
+    const idKey = invoice._id ? String(invoice._id) : "";
+    const numberKey = String(invoice.invoiceNumber || "").toUpperCase();
+    const postedPaid = (idKey ? paidByInvoiceId.get(idKey) : 0) || paidByInvoiceNumber.get(numberKey) || 0;
+    const postedAdvanceRefs = (idKey ? advanceRefsByInvoiceId.get(idKey) : null) || advanceRefsByInvoiceNumber.get(numberKey) || new Set();
+    const legacyAdvancePaid = (invoice.advancePayments || []).reduce((sum, advance) => {
+      const ref = String(advance._id || "");
+      return postedAdvanceRefs.has(ref) ? sum : sum + (Number(advance.amount) || 0);
+    }, 0);
+    const total = roundMoney(invoice.total);
+    const paid = roundMoney(postedPaid + legacyAdvancePaid);
+    const balance = roundMoney(total - paid);
+    const dueDate = toDateOnly(invoice.dueDate) || calculateDueDate(invoice.invoiceDate, invoice.paymentTermsDays);
+    const overdueDays = balance > 0 && dueDate && dueDate < today ? daysBetween(dueDate, today) : 0;
+
+    return {
+      ...invoice,
+      dueDate,
+      paymentSummary: {
+        total,
+        paid,
+        balance: Math.max(0, balance),
+        overdueDays,
+        status: invoicePaymentStatus({ total, paid, balance, dueDate, today }),
+      },
+    };
+  });
+
+  return isArray ? enriched : enriched[0];
+};
+
 // ─────────────────────────────────────────
 // @desc    Get Invoice by bookingId (linked booking queryId)
 // @route   GET /api/invoices/by-booking/:bookingId
@@ -35,7 +152,8 @@ export const getInvoiceByBookingId = async (req, res) => {
     if (!invoice) {
       return res.status(404).json({ success: false, message: "No invoice found for this booking", data: null });
     }
-    res.status(200).json({ success: true, message: "Invoice fetched successfully", data: invoice });
+    const enriched = await attachPaymentSummary(invoice);
+    res.status(200).json({ success: true, message: "Invoice fetched successfully", data: enriched });
   } catch (error) {
     console.error("getInvoiceByBookingId error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch invoice.", data: null });
@@ -56,7 +174,8 @@ export const getInvoiceByNumber = async (req, res) => {
     if (!invoice) {
       return res.status(404).json({ success: false, message: "Invoice not found", data: null });
     }
-    res.status(200).json({ success: true, message: "Invoice fetched successfully", data: invoice });
+    const enriched = await attachPaymentSummary(invoice);
+    res.status(200).json({ success: true, message: "Invoice fetched successfully", data: enriched });
   } catch (error) {
     console.error("getInvoiceByNumber error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch invoice.", data: null });
@@ -83,14 +202,18 @@ export const getNextInvoiceNumber = async (req, res) => {
 // ─────────────────────────────────────────
 export const createInvoice = async (req, res) => {
   try {
-    const payload = { ...req.body };
+    let payload = { ...req.body };
+    if (payload.customerId === "") payload.customerId = null;
 
     // Always assign a fresh, unique ASA-prefixed invoice number on the server
     // — even if the client suggested one — to avoid collisions and bypassing rules.
     payload.invoiceNumber = await generateUniqueInvoiceNumber();
+    payload = applyInvoiceTerms(payload);
 
     const invoice = await Invoice.create(payload);
-    res.status(201).json({ success: true, message: "Invoice created successfully", data: invoice });
+    await postInvoiceJournal(invoice, req.user);
+    const enriched = await attachPaymentSummary(invoice);
+    res.status(201).json({ success: true, message: "Invoice created successfully", data: enriched });
   } catch (error) {
     console.error("createInvoice error:", error);
     res.status(400).json({ success: false, message: "Failed to create invoice.", data: null });
@@ -112,6 +235,7 @@ export const getAllInvoices = async (req, res) => {
       const escaped = escapeRegex(search);
       query.$or = [
         { "billTo.name":  { $regex: escaped, $options: "i" } },
+        { "billTo.email": { $regex: escaped, $options: "i" } },
         { bookingId:      { $regex: escaped, $options: "i" } },
         { invoiceNumber:  { $regex: escaped, $options: "i" } },
       ];
@@ -127,7 +251,8 @@ export const getAllInvoices = async (req, res) => {
 
     if (!wantsPagination) {
       const invoices = await Invoice.find(query).sort({ createdAt: -1 });
-      return res.status(200).json({ success: true, message: "Invoices fetched successfully", data: invoices });
+      const enriched = await attachPaymentSummary(invoices);
+      return res.status(200).json({ success: true, message: "Invoices fetched successfully", data: enriched });
     }
 
     const pageNum  = Math.max(1, parseInt(page, 10) || 1);
@@ -138,11 +263,12 @@ export const getAllInvoices = async (req, res) => {
       Invoice.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum),
       Invoice.countDocuments(query),
     ]);
+    const enriched = await attachPaymentSummary(invoices);
 
     return res.status(200).json({
       success: true,
       message: "Invoices fetched successfully",
-      data: invoices,
+      data: enriched,
       total,
       page:       pageNum,
       limit:      limitNum,
@@ -162,7 +288,8 @@ export const getInvoiceById = async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.id);
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
-    res.status(200).json({ success: true, message: "Invoice fetched successfully", data: invoice });
+    const enriched = await attachPaymentSummary(invoice);
+    res.status(200).json({ success: true, message: "Invoice fetched successfully", data: enriched });
   } catch (error) {
     console.error("getInvoiceById error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch invoice.", data: null });
@@ -183,19 +310,39 @@ export const updateInvoice = async (req, res) => {
 
     // Whitelist allowed fields to prevent mass assignment
     const allowedFields = [
-      "bookingId", "date", "billTo", "currency", "entries",
-      "subtotal", "discount", "total", "note",
+      "customerId", "bookingId", "invoiceDate", "paymentTermsDays", "dueDate", "from", "billTo", "lineItems",
+      "subtotal", "discountType", "discountValue", "discount",
+      "taxApplicable", "taxPercent", "taxAmount", "totalWithTax",
+      "total", "currency", "notes", "terms",
     ];
     const updates = {};
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    if (updates.customerId === "") updates.customerId = null;
+
+    if (updates.invoiceDate !== undefined || updates.paymentTermsDays !== undefined || updates.dueDate !== undefined) {
+      const existing = await Invoice.findById(req.params.id)
+        .select("invoiceDate paymentTermsDays dueDate")
+        .lean();
+      if (!existing) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
+
+      const merged = applyInvoiceTerms({
+        invoiceDate: updates.invoiceDate ?? existing.invoiceDate,
+        paymentTermsDays: updates.paymentTermsDays ?? existing.paymentTermsDays,
+        dueDate: updates.dueDate ?? "",
+      });
+      updates.paymentTermsDays = merged.paymentTermsDays;
+      updates.dueDate = merged.dueDate;
     }
 
     const invoice = await Invoice.findByIdAndUpdate(
       req.params.id, { $set: updates }, { returnDocument: 'after', runValidators: true }
     );
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
-    res.status(200).json({ success: true, message: "Invoice updated successfully", data: invoice });
+    const enriched = await attachPaymentSummary(invoice);
+    await postInvoiceJournal(invoice, req.user);
+    res.status(200).json({ success: true, message: "Invoice updated successfully", data: enriched });
   } catch (error) {
     console.error("updateInvoice error:", error);
     res.status(400).json({ success: false, message: "Failed to update invoice.", data: null });
@@ -210,6 +357,13 @@ export const deleteInvoice = async (req, res) => {
   try {
     const invoice = await Invoice.findByIdAndDelete(req.params.id);
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
+    await reverseJournalEntry({
+      sourceEntity: "invoice",
+      sourceId: invoice._id,
+      entryDate: new Date().toISOString().slice(0, 10),
+      memo: `Invoice ${invoice.invoiceNumber || ""} deleted`.trim(),
+      user: req.user,
+    });
     res.status(200).json({ success: true, message: "Invoice deleted successfully", data: null });
   } catch (error) {
     console.error("deleteInvoice error:", error);
@@ -258,6 +412,42 @@ export const addAdvancePayment = async (req, res) => {
     const numAmount = Number(amount);
     if (!Number.isFinite(numAmount) || numAmount <= 0) {
       return res.status(400).json({ success: false, message: "Amount must be greater than zero", data: null });
+    }
+    const existingInvoice = await Invoice.findById(req.params.id).lean();
+    if (!existingInvoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
+    const cleanReference = String(referenceCode || "").trim();
+    if (cleanReference) {
+      const duplicateAdvance = (existingInvoice.advancePayments || []).some(
+        (advance) => String(advance.referenceCode || "").trim().toLowerCase() === cleanReference.toLowerCase(),
+      );
+      const duplicatePayment = await CustomerPayment.exists({
+        status: "posted",
+        referenceCode: { $regex: `^${escapeRegex(cleanReference)}$`, $options: "i" },
+        $or: [
+          { invoiceId: existingInvoice._id },
+          { invoiceNumber: String(existingInvoice.invoiceNumber || "").toUpperCase() },
+        ],
+      });
+      if (duplicateAdvance || duplicatePayment) {
+        return res.status(400).json({ success: false, message: "A posted payment with this reference already exists for this invoice.", data: null });
+      }
+    }
+
+    const postedPayments = await CustomerPayment.find({
+      status: "posted",
+      $or: [
+        { invoiceId: existingInvoice._id },
+        { invoiceNumber: String(existingInvoice.invoiceNumber || "").toUpperCase() },
+      ],
+    }).select("amount source sourceRef").lean();
+    const mirroredAdvanceRefs = new Set(postedPayments.filter((p) => p.source === "invoice-advance" && p.sourceRef).map((p) => String(p.sourceRef)));
+    const legacyAdvancePaid = (existingInvoice.advancePayments || []).reduce((sum, advance) => (
+      mirroredAdvanceRefs.has(String(advance._id || "")) ? sum : sum + (Number(advance.amount) || 0)
+    ), 0);
+    const paidBefore = postedPayments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0) + legacyAdvancePaid;
+    const outstanding = Math.round(((Number(existingInvoice.total) || 0) - paidBefore) * 100) / 100;
+    if (numAmount > outstanding + 0.009) {
+      return res.status(400).json({ success: false, message: `Advance exceeds invoice outstanding balance (${outstanding.toFixed(2)}).`, data: null });
     }
     const slipMeta = (slip && slip.url)
       ? {
@@ -316,7 +506,15 @@ export const addAdvancePayment = async (req, res) => {
       console.warn("Sales-record sync failed for invoice", invoice.invoiceNumber, ":", syncErr.message);
     }
 
-    res.status(201).json({ success: true, message: "Advance payment added", data: invoice });
+    try {
+      const added = invoice.advancePayments?.[invoice.advancePayments.length - 1];
+      if (added) await createCustomerPaymentFromInvoiceAdvance(invoice, added);
+    } catch (paymentErr) {
+      console.warn("Customer-payment sync failed for invoice", invoice.invoiceNumber, ":", paymentErr.message);
+    }
+
+    const enriched = await attachPaymentSummary(invoice);
+    res.status(201).json({ success: true, message: "Advance payment added", data: enriched });
   } catch (error) {
     console.error("addAdvancePayment error:", error);
     res.status(400).json({ success: false, message: "Failed to add advance payment.", data: null });
@@ -377,7 +575,20 @@ export const removeAdvancePayment = async (req, res) => {
       console.warn("Sales-record removal sync failed:", syncErr.message);
     }
 
-    res.status(200).json({ success: true, message: "Advance payment removed", data: invoice });
+    try {
+      if (snapshot.invoiceNumber && req.params.advanceId) {
+        await CustomerPayment.findOneAndUpdate(
+          { source: "invoice-advance", sourceRef: req.params.advanceId },
+          { $set: { status: "void", notes: "Voided after invoice advance removal" } },
+          { returnDocument: "after" },
+        );
+      }
+    } catch (paymentErr) {
+      console.warn("Customer-payment removal sync failed:", paymentErr.message);
+    }
+
+    const enriched = await attachPaymentSummary(invoice);
+    res.status(200).json({ success: true, message: "Advance payment removed", data: enriched });
   } catch (error) {
     console.error("removeAdvancePayment error:", error);
     res.status(500).json({ success: false, message: "Failed to remove advance payment.", data: null });

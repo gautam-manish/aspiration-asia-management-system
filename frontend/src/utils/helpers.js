@@ -1,3 +1,5 @@
+import toast from "react-hot-toast";
+
 // Format date to readable string
 export const formatDate = (dateStr) => {
   if (!dateStr) return "—";
@@ -25,13 +27,10 @@ export const getError = (err) => {
 
 // Show an error toast only when there's a real, user-facing message.
 // Use everywhere instead of `toast.error(getError(err))` so cancelled/401 errors stay silent.
-// Lazy-imported to avoid a cyclic import with helpers used during boot.
-let _toast;
 export const notifyError = async (err) => {
   const msg = getError(err);
   if (!msg) return;
-  if (!_toast) _toast = (await import("react-hot-toast")).default;
-  _toast.error(msg);
+  toast.error(msg);
 };
 
 // Truncate long text

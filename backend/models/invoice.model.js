@@ -47,8 +47,25 @@ const invoiceSchema = new mongoose.Schema(
       trim: true,
       required: [true, "Invoice date is required"],
     },
+    paymentTermsDays: {
+      type: Number,
+      default: 0,
+      min: [0, "Payment terms cannot be negative"],
+    },
+    dueDate: {
+      type: String,
+      trim: true,
+      default: "",
+      index: true,
+    },
 
     bookingId: { type: String, trim: true, default: "" },
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sundry",
+      default: null,
+      index: true,
+    },
 
     from: {
       name: { type: String, trim: true },
@@ -98,12 +115,12 @@ const invoiceSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-const Invoice = mongoose.model("Invoice", invoiceSchema);
-
 // ── Indexes ──────────────────────────────────────────────────────────────
 // invoiceNumber is already unique-indexed via the field declaration.
 invoiceSchema.index({ "billTo.name": 1 });
 invoiceSchema.index({ bookingId: 1 });
 invoiceSchema.index({ createdAt: -1 });
+
+const Invoice = mongoose.model("Invoice", invoiceSchema);
 
 export default Invoice;

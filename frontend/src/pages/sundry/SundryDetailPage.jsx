@@ -34,6 +34,11 @@ const Row = ({ label, value }) => (
   </div>
 );
 
+const fmtMoney = (n) => Number(n || 0).toLocaleString("en-IN", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export default function SundryDetailPage() {
   const { id }   = useParams();
   const navigate = useNavigate();
@@ -111,6 +116,7 @@ export default function SundryDetailPage() {
           <div className="card-body">
             <Row label="Company Name"    value={entry.companyName} />
             <Row label="Contact Person"  value={<strong>{entry.contactPerson}</strong>} />
+            <Row label="Party Code"      value={entry.partyCode} />
             <Row label="PAN / VAT / GST" value={entry.panVatGst} />
             <Row label="Address"         value={entry.address} />
             <Row label="Country"         value={entry.country} />
@@ -122,6 +128,12 @@ export default function SundryDetailPage() {
             <Row label="Contact Number" value={entry.phone} />
             <Row label="Email"          value={entry.email} />
             <Row label="Type"           value={isDebtor ? "Debtor" : "Creditor"} />
+            <Row label="Roles"          value={(entry.roles?.length ? entry.roles : [isDebtor ? "customer" : "vendor"]).join(", ")} />
+            <Row label="Status"         value={entry.status || "active"} />
+            <Row label="Opening Balance" value={fmtMoney(entry.openingBalance)} />
+            <Row label="Credit Limit"    value={fmtMoney(entry.creditLimit)} />
+            <Row label="Payment Terms"   value={`${Number(entry.paymentTermsDays || 0)} days`} />
+            <Row label="Notes"           value={entry.notes} />
           </div>
         </div>
       </div>

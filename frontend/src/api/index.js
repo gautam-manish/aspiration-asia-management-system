@@ -79,6 +79,64 @@ export const cashReceiptAPI = {
   remove:  (id)     => api.delete(`/cash-receipts/${id}`),
 };
 
+// Customer Payments
+export const customerPaymentAPI = {
+  getAll:  (params) => api.get("/customer-payments", { params }),
+  getById: (id)     => api.get(`/customer-payments/${id}`),
+  create:  (data)   => api.post("/customer-payments", data),
+  update:  (id, data) => api.put(`/customer-payments/${id}`, data),
+  void:    (id, data = {}) => api.patch(`/customer-payments/${id}/void`, data),
+};
+
+// Vendor Bills
+export const vendorBillAPI = {
+  getAll:  (params) => api.get("/vendor-bills", { params }),
+  getById: (id)     => api.get(`/vendor-bills/${id}`),
+  create:  (data)   => api.post("/vendor-bills", data),
+  update:  (id, data) => api.put(`/vendor-bills/${id}`, data),
+  void:    (id, data = {}) => api.patch(`/vendor-bills/${id}/void`, data),
+};
+
+// Vendor Payments
+export const vendorPaymentAPI = {
+  getAll:  (params) => api.get("/vendor-payments", { params }),
+  getById: (id)     => api.get(`/vendor-payments/${id}`),
+  create:  (data)   => api.post("/vendor-payments", data),
+  update:  (id, data) => api.put(`/vendor-payments/${id}`, data),
+  void:    (id, data = {}) => api.patch(`/vendor-payments/${id}/void`, data),
+};
+
+// Office Expenses
+export const officeExpenseAPI = {
+  getAll:  (params) => api.get("/office-expenses", { params }),
+  getById: (id)     => api.get(`/office-expenses/${id}`),
+  create:  (data)   => api.post("/office-expenses", data),
+  update:  (id, data) => api.put(`/office-expenses/${id}`, data),
+  void:    (id, data = {}) => api.patch(`/office-expenses/${id}/void`, data),
+};
+
+// Audit Logs
+export const auditLogAPI = {
+  getAll: (params) => api.get("/audit-logs", { params }),
+};
+
+// Journal Entries
+export const journalEntryAPI = {
+  getAll: (params) => api.get("/journal-entries", { params }),
+  backfill: (data = {}) => api.post("/journal-entries/backfill", data),
+};
+
+// Reports
+export const reportAPI = {
+  getArAging: (params) => api.get("/reports/ar-aging", { params }),
+  getApAging: (params) => api.get("/reports/ap-aging", { params }),
+  getBookingProfitability: (params) => api.get("/reports/booking-profitability", { params }),
+  getCustomerLedger: (params) => api.get("/reports/customer-ledger", { params }),
+  getVendorLedger: (params) => api.get("/reports/vendor-ledger", { params }),
+  getProfitLoss: (params) => api.get("/reports/profit-loss", { params }),
+  getAccountingReconciliation: () => api.get("/reports/accounting-reconciliation"),
+};
+
 // ── Calculator ──────────────────────────────────────────────────────
 export const calculatorAPI = {
   getAll:  ()           => api.get("/calculator"),

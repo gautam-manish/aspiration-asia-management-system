@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 // ─────────────────────────────────────────
-//  Sundry Debtors & Creditors Schema
+//  Party / Sundry Debtors & Creditors Schema
 //  Collection: sundries
 // ─────────────────────────────────────────
 
@@ -49,9 +49,62 @@ const sundrySchema = new mongoose.Schema(
       enum:     ["debtor", "creditor"],
       default:  "debtor",
     },
+
+    // ERP party-master fields. The legacy `type` field remains for existing
+    // screens and reports; roles express how this party participates in ERP
+    // workflows going forward.
+    partyCode: {
+      type:  String,
+      trim:  true,
+      sparse: true,
+      unique: true,
+    },
+    roles: {
+      type:    [String],
+      enum:    ["customer", "vendor"],
+      default: undefined,
+    },
+    status: {
+      type:    String,
+      enum:    ["active", "inactive"],
+      default: "active",
+    },
+    openingBalance: {
+      type:    Number,
+      default: 0,
+    },
+    creditLimit: {
+      type:    Number,
+      default: 0,
+      min:     [0, "Credit limit cannot be negative"],
+    },
+    paymentTermsDays: {
+      type:    Number,
+      default: 0,
+      min:     [0, "Payment terms cannot be negative"],
+    },
+    notes: {
+      type:    String,
+      trim:    true,
+      default: "",
+    },
   },
   { timestamps: true }
 );
+
+// Keep older debtor/creditor entries useful as ERP parties without requiring a
+// one-time migration before the app can run.
+sundrySchema.pre("validate", function () {
+  if (!Array.isArray(this.roles) || this.roles.length === 0) {
+    this.roles = this.type === "creditor" ? ["vendor"] : ["customer"];
+  }
+  this.roles = [...new Set(this.roles.filter(Boolean))];
+});
+
+sundrySchema.index({ contactPerson: 1 });
+sundrySchema.index({ companyName: 1 });
+sundrySchema.index({ roles: 1 });
+sundrySchema.index({ status: 1 });
 
 const Sundry = mongoose.model("Sundry", sundrySchema);
 export default Sundry;

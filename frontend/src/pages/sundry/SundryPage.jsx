@@ -13,6 +13,8 @@ const COUNTRIES = ["Nepal", "India", "Bhutan"];
 const EMPTY_FORM = {
   type: "debtor", companyName: "", contactPerson: "",
   panVatGst: "", address: "", phone: "", email: "", country: "",
+  partyCode: "", roles: ["customer"], status: "active",
+  openingBalance: "", creditLimit: "", paymentTermsDays: "", notes: "",
 };
 
 function TypeToggle({ value, onChange }) {
@@ -39,12 +41,28 @@ function TypeToggle({ value, onChange }) {
 
 function SundryModal({ entry, onClose, onSaved }) {
   const isEdit = !!entry;
-  const [form, setForm]     = useState(isEdit ? { ...entry } : { ...EMPTY_FORM });
+  const [form, setForm]     = useState(isEdit ? {
+    ...EMPTY_FORM,
+    ...entry,
+    roles: Array.isArray(entry.roles) && entry.roles.length
+      ? entry.roles
+      : (entry.type === "creditor" ? ["vendor"] : ["customer"]),
+  } : { ...EMPTY_FORM });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const set = (k, v) => {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: undefined }));
+  };
+  const toggleRole = (role) => {
+    setForm((f) => {
+      const current = Array.isArray(f.roles) ? f.roles : [];
+      const roles = current.includes(role)
+        ? current.filter((r) => r !== role)
+        : [...current, role];
+      return { ...f, roles };
+    });
+    setErrors((e) => ({ ...e, roles: undefined }));
   };
 
   const validate = () => {
@@ -71,6 +89,18 @@ function SundryModal({ entry, onClose, onSaved }) {
 
     if (!["debtor", "creditor"].includes(form.type))
       e.type = "Pick a type";
+    if (!Array.isArray(form.roles) || form.roles.length === 0)
+      e.roles = "Pick at least one role";
+    if (form.partyCode && !/^[A-Za-z0-9-]{3,30}$/.test(form.partyCode.trim()))
+      e.partyCode = "3-30 letters, numbers, or hyphens";
+    if (Number(form.openingBalance || 0) < 0)
+      e.openingBalance = "Cannot be negative";
+    if (Number(form.creditLimit || 0) < 0)
+      e.creditLimit = "Cannot be negative";
+    if (Number(form.paymentTermsDays || 0) < 0)
+      e.paymentTermsDays = "Cannot be negative";
+    if ((form.notes || "").length > 500)
+      e.notes = "Too long (max 500)";
 
     return e;
   };
@@ -85,8 +115,14 @@ function SundryModal({ entry, onClose, onSaved }) {
     }
     setLoading(true);
     try {
-      if (isEdit) await sundryAPI.update(entry._id, form);
-      else        await sundryAPI.create(form);
+      const payload = {
+        ...form,
+        openingBalance: Number(form.openingBalance) || 0,
+        creditLimit: Number(form.creditLimit) || 0,
+        paymentTermsDays: Number(form.paymentTermsDays) || 0,
+      };
+      if (isEdit) await sundryAPI.update(entry._id, payload);
+      else        await sundryAPI.create(payload);
       toast.success(`Entry ${isEdit ? "updated" : "saved"} ✓`);
       onSaved();
     } catch (err) {
@@ -108,12 +144,45 @@ function SundryModal({ entry, onClose, onSaved }) {
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-4">
             <div>
-              <p className="label mb-2">Entry Type *</p>
+              <p className="label mb-2">Accounting Type *</p>
               <TypeToggle value={form.type} onChange={(v) => set("type", v)} />
             </div>
             <div>
-              <p className="label mb-3">Company Information</p>
+              <p className="label mb-2">Party Roles *</p>
               <div className="grid grid-cols-2 gap-3">
+                {[
+                  { val: "customer", icon: "fa-user", label: "Customer" },
+                  { val: "vendor", icon: "fa-truck", label: "Vendor" },
+                ].map(({ val, icon, label }) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => toggleRole(val)}
+                    className={`flex items-center justify-center gap-2 border-2 rounded-xl py-2.5 text-sm font-semibold transition-all ${
+                      (form.roles || []).includes(val)
+                        ? "border-brand-600 text-brand-600 bg-blue-50"
+                        : "border-slate-200 text-slate-500 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <i className={`fa ${icon}`} /> {label}
+                  </button>
+                ))}
+              </div>
+              {errors.roles && <p className="text-xs text-red-500 mt-1">{errors.roles}</p>}
+            </div>
+            <div>
+              <p className="label mb-3">Party Information</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Party Code">
+                  <input className={`input ${errCls("partyCode")}`} value={form.partyCode || ""} onChange={(e) => set("partyCode", e.target.value.toUpperCase())} placeholder="CUS-001" maxLength={30} />
+                  {errors.partyCode && <p className="text-xs text-red-500 mt-1">{errors.partyCode}</p>}
+                </Field>
+                <Field label="Status">
+                  <select className="input" value={form.status || "active"} onChange={(e) => set("status", e.target.value)}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </Field>
                 <Field label="Company Name" className="col-span-2">
                   <input className={`input ${errCls("companyName")}`} value={form.companyName} onChange={(e) => set("companyName", e.target.value)} maxLength={150} />
                   {errors.companyName && <p className="text-xs text-red-500 mt-1">{errors.companyName}</p>}
@@ -143,6 +212,22 @@ function SundryModal({ entry, onClose, onSaved }) {
                     <option value="">—</option>
                     {COUNTRIES.map((c) => <option key={c}>{c}</option>)}
                   </select>
+                </Field>
+                <Field label="Opening Balance">
+                  <input className={`input ${errCls("openingBalance")}`} type="number" min="0" value={form.openingBalance || ""} onChange={(e) => set("openingBalance", e.target.value)} />
+                  {errors.openingBalance && <p className="text-xs text-red-500 mt-1">{errors.openingBalance}</p>}
+                </Field>
+                <Field label="Credit Limit">
+                  <input className={`input ${errCls("creditLimit")}`} type="number" min="0" value={form.creditLimit || ""} onChange={(e) => set("creditLimit", e.target.value)} />
+                  {errors.creditLimit && <p className="text-xs text-red-500 mt-1">{errors.creditLimit}</p>}
+                </Field>
+                <Field label="Payment Terms (Days)">
+                  <input className={`input ${errCls("paymentTermsDays")}`} type="number" min="0" value={form.paymentTermsDays || ""} onChange={(e) => set("paymentTermsDays", e.target.value)} />
+                  {errors.paymentTermsDays && <p className="text-xs text-red-500 mt-1">{errors.paymentTermsDays}</p>}
+                </Field>
+                <Field label="Notes" className="col-span-2">
+                  <textarea className={`input min-h-[80px] ${errCls("notes")}`} value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} maxLength={500} />
+                  {errors.notes && <p className="text-xs text-red-500 mt-1">{errors.notes}</p>}
                 </Field>
               </div>
             </div>
@@ -185,7 +270,7 @@ export default function SundryPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Sundry Debtors &amp; Creditors</h1>
-          <p className="page-subtitle">{total} {total !== 1 ? "entries" : "entry"} found</p>
+          <p className="page-subtitle">Party master · {total} {total !== 1 ? "entries" : "entry"} found</p>
         </div>
         <button onClick={() => setModal("add")} className="btn-primary">
           <i className="fa fa-plus" /> Add Entry
@@ -211,8 +296,9 @@ export default function SundryPage() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Company Name</th>
+                    <th>Party</th>
                     <th>Contact Person</th>
+                    <th>Roles</th>
                     <th>Address</th>
                     <th>Country</th>
                     <th>Type</th>
@@ -224,6 +310,13 @@ export default function SundryPage() {
                     <tr key={s._id}>
                       <td className="font-medium text-slate-800">{s.companyName || "—"}</td>
                       <td>{s.contactPerson}</td>
+                      <td>
+                        <div className="flex gap-1 flex-wrap">
+                          {(s.roles?.length ? s.roles : [s.type === "creditor" ? "vendor" : "customer"]).map((role) => (
+                            <span key={role} className="badge badge-gray capitalize">{role}</span>
+                          ))}
+                        </div>
+                      </td>
                       <td className="text-slate-500">{s.address || "—"}</td>
                       <td className="text-slate-500">{s.country || "—"}</td>
                       <td>

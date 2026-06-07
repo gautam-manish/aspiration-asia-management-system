@@ -9,7 +9,7 @@ import { useBookingsPaginated, useBookingMutations, useSundryDropdown } from "..
 import toast from "react-hot-toast";
 
 const EMPTY_FORM = {
-  queryId:"", companyName:"", clientName:"", email:"", mobile:"", address:"",
+  queryId:"", customerId:"", companyName:"", clientName:"", email:"", mobile:"", address:"",
   destination:"Nepal", pickupPoint:"", dropPoint:"",
   arrivalDate:"", departureDate:"", noOfDays:"",
   adults:0, childEB:0, childNoEB:0, childU5:0, rooms:0,
@@ -35,8 +35,8 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
 
   const wasCancelled = isEdit && booking?.status === "cancelled";
 
-  // Cached creditor dropdown — fetched once, reused on every modal open.
-  const { data: creditors = [] } = useSundryDropdown({ type: "creditor" });
+  // Cached party dropdown - fetched once, reused on every modal open.
+  const { data: parties = [] } = useSundryDropdown();
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -49,30 +49,32 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
     });
   };
 
-  /* when a creditor is selected from dropdown */
-  const handleCreditorSelect = (creditor) => {
+  /* when a party is selected from dropdown */
+  const handlePartySelect = (party) => {
     setForm((f) => ({
       ...f,
-      clientName: creditor.contactPerson || "",
-      companyName: creditor.companyName || "",
-      email: creditor.email || "",
-      mobile: creditor.phone || "",
-      address: creditor.address || "",
+      customerId: party._id || "",
+      clientName: party.contactPerson || "",
+      companyName: party.companyName || "",
+      email: party.email || "",
+      mobile: party.phone || "",
+      address: party.address || "",
     }));
     setClientSearch("");
     setDropdownOpen(false);
   };
 
-  /* filtered creditors based on search input */
-  const filteredCreditors = useMemo(() => {
-    if (!clientSearch) return creditors;
+  /* filtered parties based on search input */
+  const filteredParties = useMemo(() => {
+    if (!clientSearch) return parties;
     const q = clientSearch.toLowerCase();
-    return creditors.filter(
+    return parties.filter(
       (c) =>
         c.contactPerson?.toLowerCase().includes(q) ||
-        c.companyName?.toLowerCase().includes(q)
+        c.companyName?.toLowerCase().includes(q) ||
+        c.partyCode?.toLowerCase().includes(q)
     );
-  }, [creditors, clientSearch]);
+  }, [parties, clientSearch]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -124,26 +126,27 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
                           autoFocus
                           type="text"
                           className="input text-sm"
-                          placeholder="Search creditors…"
+                          placeholder="Search parties..."
                           value={clientSearch}
                           onChange={(e) => setClientSearch(e.target.value)}
                           onClick={(e) => e.stopPropagation()}
                         />
                       </div>
-                      {filteredCreditors.length === 0 ? (
-                        <div className="p-3 text-sm text-slate-400 text-center">No creditors found</div>
+                      {filteredParties.length === 0 ? (
+                        <div className="p-3 text-sm text-slate-400 text-center">No parties found</div>
                       ) : (
-                        filteredCreditors.map((c) => (
+                        filteredParties.map((c) => (
                           <button
                             key={c._id}
                             type="button"
                             className="w-full text-left px-3 py-2 hover:bg-brand-50 transition-colors border-b border-slate-50 last:border-b-0"
-                            onClick={() => handleCreditorSelect(c)}
+                            onClick={() => handlePartySelect(c)}
                           >
                             <p className="text-sm font-medium text-slate-800">{c.contactPerson}</p>
                             {c.companyName && (
                               <p className="text-xs text-slate-400">{c.companyName}</p>
                             )}
+                            {c.partyCode && <p className="text-xs text-slate-400 font-mono">{c.partyCode}</p>}
                           </button>
                         ))
                       )}

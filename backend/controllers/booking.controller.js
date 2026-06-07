@@ -50,6 +50,7 @@ export const createBooking = async (req, res) => {
   try {
     const {
       queryId: providedId,
+      customerId,
       clientName,
       email,
       mobile,
@@ -105,6 +106,7 @@ export const createBooking = async (req, res) => {
 
     const booking = await Booking.create({
       queryId,
+      customerId: customerId || null,
       clientName,
       email,
       mobile,
@@ -162,6 +164,7 @@ export const getAllBookings = async (req, res) => {
     if (search) {
       filter.$or = [
         { clientName: { $regex: escapeRegex(search), $options: "i" } },
+        { companyName: { $regex: escapeRegex(search), $options: "i" } },
         { queryId: { $regex: escapeRegex(search), $options: "i" } },
         { destination: { $regex: escapeRegex(search), $options: "i" } },
       ];
@@ -282,7 +285,7 @@ export const updateBooking = async (req, res) => {
 
     // Whitelist allowed fields to prevent mass assignment
     const allowedFields = [
-      "clientName", "companyName", "email", "mobile", "address",
+      "customerId", "clientName", "companyName", "email", "mobile", "address",
       "destination", "pickupPoint", "dropPoint",
       "arrivalDate", "departureDate", "noOfDays",
       "adults", "childEB", "childNoEB", "childU5",
@@ -292,6 +295,7 @@ export const updateBooking = async (req, res) => {
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
+    if (updates.customerId === "") updates.customerId = null;
 
     // Prevent re-confirming a cancelled booking via full update
     const existing = await Booking.findById(req.params.id);

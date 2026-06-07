@@ -17,6 +17,12 @@ const querySchema = new mongoose.Schema(
     },
 
     // ── Company / Client / Agent Info ──────────
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sundry",
+      default: null,
+      index: true,
+    },
     companyName: {
       type: String,
       trim: true,

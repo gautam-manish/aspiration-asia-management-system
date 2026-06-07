@@ -8,29 +8,47 @@ const NAV_GROUPS = [
   {
     label: "Operations",
     items: [
-      { to: "/hotels",             icon: "fa-hotel",          label: "Hotels" },
-      { to: "/bookings",          icon: "fa-bookmark",       label: "Bookings" },
-      { to: "/",                  icon: "fa-plane-arrival",  label: "Upcoming Arrivals" },
-      { to: "/reservations",      icon: "fa-calendar-check", label: "Reservations" },
-      { to: "/vouchers",          icon: "fa-ticket-alt",     label: "Vouchers" },
-      { to: "/package-cost",      icon: "fa-box-open",       label: "Package Cost" },
+      { to: "/hotels",             icon: "fa-hotel",          label: "Hotels", roles: ["admin", "sales", "operations"] },
+      { to: "/bookings",          icon: "fa-bookmark",       label: "Bookings", roles: ["admin", "sales", "operations"] },
+      { to: "/",                  icon: "fa-plane-arrival",  label: "Upcoming Arrivals", roles: ["admin", "sales", "operations"] },
+      { to: "/reservations",      icon: "fa-calendar-check", label: "Reservations", roles: ["admin", "sales", "operations"] },
+      { to: "/vouchers",          icon: "fa-ticket-alt",     label: "Vouchers", roles: ["admin", "sales", "operations"] },
+      { to: "/package-cost",      icon: "fa-box-open",       label: "Package Cost", roles: ["admin", "sales", "operations"] },
     ],
   },
   {
     label: "Finance",
     items: [
-      { to: "/invoices",         icon: "fa-file-invoice",   label: "Invoices" },
-      { to: "/cash-receipts",    icon: "fa-receipt",        label: "Cash Receipts" },
-      { to: "/sales-records",    icon: "fa-chart-line",     label: "Sales Records" },
-      { to: "/purchase-records", icon: "fa-book",           label: "Purchase Records" },
-      { to: "/bank-accounts",    icon: "fa-university",     label: "Bank Accounts" },
-      { to: "/calculator",       icon: "fa-calculator",     label: "Calculator" },
+      { to: "/invoices",         icon: "fa-file-invoice",   label: "Invoices", roles: ["admin", "sales", "accountant"] },
+      { to: "/customer-payments", icon: "fa-money-bill-wave", label: "Customer Payments", roles: ["admin", "accountant"] },
+      { to: "/ar-aging",        icon: "fa-clock",          label: "AR Aging", roles: ["admin", "accountant"] },
+      { to: "/vendor-bills",    icon: "fa-file-invoice-dollar", label: "Vendor Bills", roles: ["admin", "accountant"] },
+      { to: "/vendor-payments", icon: "fa-money-check-alt", label: "Vendor Payments", roles: ["admin", "accountant"] },
+      { to: "/ap-aging",        icon: "fa-business-time",  label: "AP Aging", roles: ["admin", "accountant"] },
+      { to: "/booking-profitability", icon: "fa-chart-pie", label: "Profitability", roles: ["admin", "accountant"] },
+      { to: "/customer-ledger", icon: "fa-book-open",      label: "Customer Ledger", roles: ["admin", "accountant"] },
+      { to: "/vendor-ledger",   icon: "fa-book-reader",    label: "Vendor Ledger", roles: ["admin", "accountant"] },
+      { to: "/office-expenses", icon: "fa-wallet",         label: "Office Expenses", roles: ["admin", "accountant"] },
+      { to: "/profit-loss",     icon: "fa-balance-scale",  label: "Profit & Loss", roles: ["admin", "accountant"] },
+      { to: "/accounting-reconciliation", icon: "fa-clipboard-check", label: "Reconciliation", roles: ["admin", "accountant"] },
+      { to: "/journal-entries", icon: "fa-book",           label: "Journal Entries", roles: ["admin", "accountant"] },
+      { to: "/cash-receipts",    icon: "fa-receipt",        label: "Cash Receipts", roles: ["admin", "accountant"] },
+      { to: "/sales-records",    icon: "fa-chart-line",     label: "Sales Records", roles: ["admin", "accountant"] },
+      { to: "/purchase-records", icon: "fa-book",           label: "Purchase Records", roles: ["admin", "accountant"] },
+      { to: "/bank-accounts",    icon: "fa-university",     label: "Bank Accounts", roles: ["admin", "accountant"] },
+      { to: "/calculator",       icon: "fa-calculator",     label: "Calculator", roles: ["admin", "sales", "operations", "accountant"] },
     ],
   },
   {
     label: "Contacts",
     items: [
-      { to: "/sundry", icon: "fa-building", label: "Sundry" },
+      { to: "/sundry", icon: "fa-building", label: "Sundry", roles: ["admin", "sales", "operations", "accountant"] },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      { to: "/audit-logs", icon: "fa-shield-alt", label: "Audit Logs", roles: ["admin"] },
     ],
   },
 ];
@@ -62,6 +80,8 @@ export default function Layout({ children }) {
   const sidebarPositionClass = mobileOpen
     ? "translate-x-0"
     : "-translate-x-full lg:translate-x-0";
+  const userRole = user?.role || "";
+  const canSee = (item) => !item.roles || item.roles.includes(userRole);
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -130,7 +150,9 @@ export default function Layout({ children }) {
 
         {/* Nav */}
         <nav className="flex-1 py-3 overflow-y-auto">
-          {NAV_GROUPS.map((group) => (
+          {NAV_GROUPS.map((group) => ({ ...group, items: group.items.filter(canSee) }))
+            .filter((group) => group.items.length > 0)
+            .map((group) => (
             <div key={group.label} className="mb-1">
               {!collapsed && (
                 <p className="px-4 pt-3 pb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">

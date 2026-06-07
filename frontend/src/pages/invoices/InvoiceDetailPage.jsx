@@ -4,9 +4,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { invoiceAPI } from "../../api";
 import { numberToWords, notifyError, formatDate } from "../../utils/helpers";
 import { PageLoader, Field, ConfirmModal } from "../../components/common";
+import AuditTrailPanel from "../../components/common/AuditTrailPanel";
 import { InvoiceModal } from "./InvoicesPage";
 import { useInvoice } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
+import { useAuth } from "../../context/AuthContext";
 
 const ADVANCE_MAX_BYTES = 1 * 1024 * 1024; // 1 MB hard cap (matches backend)
 const ADVANCE_ACCEPT     = ".pdf,.jpg,.jpeg,application/pdf,image/jpeg";
@@ -16,6 +18,22 @@ const fmtSize = (bytes) => {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+const paymentStatusClass = {
+  paid: "badge-green",
+  partial: "badge-blue",
+  overdue: "badge-red",
+  unpaid: "badge-yellow",
+  draft: "badge-gray",
+};
+
+const paymentStatusLabel = {
+  paid: "Paid",
+  partial: "Partial",
+  overdue: "Overdue",
+  unpaid: "Unpaid",
+  draft: "Draft",
 };
 
 // ─── Add Advance Payment Modal ───────────────────────────────────────────────
@@ -184,6 +202,22 @@ export function InvoicePrint({ inv }) {
               <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Date:</span>
               <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{inv.invoiceDate || ""}</span>
             </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Due:</span>
+              <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{inv.dueDate || inv.invoiceDate || ""}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Terms:</span>
+              <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{Number(inv.paymentTermsDays || 0)} days</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Status:</span>
+              <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{paymentStatusLabel[inv.paymentSummary?.status] || "Unpaid"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Balance:</span>
+              <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{cur} {fmt(inv.paymentSummary?.balance ?? inv.total)}</span>
+            </div>
           </div>
         </div>
 
@@ -320,6 +354,7 @@ export default function InvoiceDetailPage() {
   const { id }   = useParams();
   const navigate = useNavigate();
   const printRef = useRef();
+  const { user } = useAuth();
 
   const [inv,     setInv]     = useState(null);
   const [loading, setLoading] = useState(true);
@@ -377,6 +412,10 @@ export default function InvoiceDetailPage() {
 
   const cur = inv.currency || "Rs.";
   const fmt = (n) => Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const paymentSummary = inv.paymentSummary || {};
+  const paymentStatus = paymentSummary.status || "unpaid";
+  const isAdmin = user?.role === "admin";
+  const canAddAdvance = isAdmin || user?.role === "accountant";
 
   return (
     <div>
@@ -392,18 +431,21 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <span className={`${paymentStatusClass[paymentStatus] || "badge-gray"} self-center`}>
+            {paymentStatusLabel[paymentStatus] || "Unknown"}
+          </span>
           {(inv.advancePayments?.length || 0) > 0 ? (
             <span className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm font-medium">
               <i className="fa fa-check-circle" /> Advance Payment Recorded
             </span>
-          ) : (
+          ) : canAddAdvance ? (
             <button onClick={() => setAdvanceModal(true)} className="btn-secondary">
               <i className="fa fa-money-bill-wave" /> Add Advance Payment
             </button>
-          )}
-          <button onClick={() => setEditing(true)} className="btn-secondary">
+          ) : null}
+          {isAdmin && <button onClick={() => setEditing(true)} className="btn-secondary">
             <i className="fa fa-edit" /> Edit Invoice
-          </button>
+          </button>}
           <button onClick={handlePrint} className="btn-primary">
             <i className="fa fa-print" /> Print / PDF
           </button>
@@ -430,6 +472,10 @@ export default function InvoiceDetailPage() {
                 <p className="text-xl font-bold text-slate-800">{inv.title || "Invoice"}</p>
                 <p className="font-mono text-brand-600 font-semibold">{inv.invoiceNumber || ""}</p>
                 <p className="text-sm text-slate-500">{inv.invoiceDate}</p>
+                <p className="text-xs text-slate-400">Due {inv.dueDate || inv.invoiceDate}</p>
+                <p className="text-xs text-slate-400">Terms {Number(inv.paymentTermsDays || 0)} days</p>
+                {paymentSummary.overdueDays > 0 && <p className="text-xs text-red-500">{paymentSummary.overdueDays} days overdue</p>}
+                <p className="text-xs text-slate-500">Balance {cur} {fmt(paymentSummary.balance ?? inv.total)}</p>
               </div>
             </div>
           </div>
@@ -546,20 +592,20 @@ export default function InvoiceDetailPage() {
                       </td>
                       <td>
                         <div className="flex justify-end">
-                          <button onClick={() => setConfirmAdvance(a)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2" title="Remove">
+                          {isAdmin && <button onClick={() => setConfirmAdvance(a)} className="btn-ghost text-red-400 hover:text-red-600 text-xs py-1 px-2" title="Remove">
                             <i className="fa fa-trash-alt" />
-                          </button>
+                          </button>}
                         </div>
                       </td>
                     </tr>
                   ))}
                   {(inv.advancePayments || []).length > 0 && (() => {
-                    const totalAdv = (inv.advancePayments || []).reduce((s, a) => s + (Number(a.amount) || 0), 0);
-                    const balance  = (Number(inv.total) || 0) - totalAdv;
+                    const paid = paymentSummary.paid ?? (inv.advancePayments || []).reduce((s, a) => s + (Number(a.amount) || 0), 0);
+                    const balance = paymentSummary.balance ?? ((Number(inv.total) || 0) - paid);
                     return (
                       <tr className="bg-slate-50 font-semibold">
-                        <td colSpan={2} className="text-right text-slate-700">Total Advance</td>
-                        <td className="text-right text-green-700">{cur} {fmt(totalAdv)}</td>
+                        <td colSpan={2} className="text-right text-slate-700">Total Paid</td>
+                        <td className="text-right text-green-700">{cur} {fmt(paid)}</td>
                         <td colSpan={2} className="text-right">
                           <span className="text-slate-500 text-xs mr-2">Balance Due</span>
                           <span className={balance > 0 ? "text-red-600" : "text-green-600"}>{cur} {fmt(Math.max(0, balance))}</span>
@@ -615,6 +661,10 @@ export default function InvoiceDetailPage() {
         <div ref={printRef}>
           <InvoicePrint inv={inv} />
         </div>
+      </div>
+
+      <div className="no-print max-w-3xl mx-auto mt-4">
+        <AuditTrailPanel entity="invoice" entityId={inv._id} />
       </div>
 
       {editing && (

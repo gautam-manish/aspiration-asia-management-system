@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import path from "path";
 
 import connectDB from "./config/db.js";
+import validateEnv from "./config/env.js";
 import authMiddleware from "./middleware/auth.middleware.js";
 import { UPLOAD_BASE } from "./middleware/upload.middleware.js";
 
@@ -24,7 +25,17 @@ import sundryRoutes         from "./routes/sundry.routes.js";
 import salesRecordRoutes    from "./routes/sales-record.routes.js";
 import purchaseRecordRoutes from "./routes/purchase-record.routes.js";
 import bankAccountRoutes    from "./routes/bank-account.routes.js";
+import customerPaymentRoutes from "./routes/customer-payment.routes.js";
+import vendorBillRoutes     from "./routes/vendor-bill.routes.js";
+import vendorPaymentRoutes  from "./routes/vendor-payment.routes.js";
+import officeExpenseRoutes  from "./routes/office-expense.routes.js";
+import journalEntryRoutes   from "./routes/journal-entry.routes.js";
+import reportRoutes         from "./routes/report.routes.js";
+import auditLogRoutes       from "./routes/audit-log.routes.js";
+import { auditAction }      from "./middleware/audit.middleware.js";
+import { allowAdmin, allowFinance, allowSalesFinance, allowSalesOps } from "./middleware/rbac.middleware.js";
 
+validateEnv();
 connectDB();
 
 const app = express();
@@ -112,19 +123,26 @@ app.use("/api/auth/login", loginLimiter);
 app.use("/api/auth",   authRoutes);
 
 // ── Protected ────────────────────────────────────────────────────────────────
-app.use("/api/sundry",          authMiddleware, sundryRoutes);
+app.use("/api/sundry",          authMiddleware, allowSalesFinance, sundryRoutes);
 
-app.use("/api/hotels",          authMiddleware, hotelRoutes);
-app.use("/api/mail",            authMiddleware, emailRoutes);
-app.use("/api/reservations",    authMiddleware, reservationRoutes);
-app.use("/api/vouchers",        authMiddleware, voucherRoutes);
-app.use("/api/invoices",        authMiddleware, invoiceRoutes);
-app.use("/api/cash-receipts",   authMiddleware, cashReceiptRoutes);
-app.use("/api/calculator",      authMiddleware, calculatorRoutes);
-app.use("/api/bookings",        authMiddleware, bookingRoutes);
-app.use("/api/salesrecords",    authMiddleware, salesRecordRoutes);
-app.use("/api/purchaserecords", authMiddleware, purchaseRecordRoutes);
-app.use("/api/bank-accounts",   authMiddleware, bankAccountRoutes);
+app.use("/api/hotels",          authMiddleware, allowSalesOps, hotelRoutes);
+app.use("/api/mail",            authMiddleware, allowSalesOps, emailRoutes);
+app.use("/api/reservations",    authMiddleware, allowSalesOps, reservationRoutes);
+app.use("/api/vouchers",        authMiddleware, allowSalesOps, auditAction("write", "voucher"), voucherRoutes);
+app.use("/api/invoices",        authMiddleware, allowSalesFinance, auditAction("write", "invoice"), invoiceRoutes);
+app.use("/api/cash-receipts",   authMiddleware, allowFinance, auditAction("write", "cash-receipt"), cashReceiptRoutes);
+app.use("/api/calculator",      authMiddleware, allowSalesOps, calculatorRoutes);
+app.use("/api/bookings",        authMiddleware, allowSalesOps, auditAction("write", "booking"), bookingRoutes);
+app.use("/api/salesrecords",    authMiddleware, allowFinance, auditAction("write", "sales-record"), salesRecordRoutes);
+app.use("/api/purchaserecords", authMiddleware, allowFinance, auditAction("write", "purchase-record"), purchaseRecordRoutes);
+app.use("/api/bank-accounts",   authMiddleware, allowFinance, auditAction("write", "bank-account"), bankAccountRoutes);
+app.use("/api/customer-payments", authMiddleware, allowFinance, auditAction("write", "customer-payment"), customerPaymentRoutes);
+app.use("/api/vendor-bills",    authMiddleware, allowFinance, auditAction("write", "vendor-bill"), vendorBillRoutes);
+app.use("/api/vendor-payments", authMiddleware, allowFinance, auditAction("write", "vendor-payment"), vendorPaymentRoutes);
+app.use("/api/office-expenses", authMiddleware, allowFinance, auditAction("write", "office-expense"), officeExpenseRoutes);
+app.use("/api/journal-entries", authMiddleware, allowFinance, journalEntryRoutes);
+app.use("/api/reports",         authMiddleware, allowFinance, reportRoutes);
+app.use("/api/audit-logs",      authMiddleware, allowFinance, auditLogRoutes);
 
 // ── Centralized Error Handler ────────────────────────────────────────────────
 // MUST be after all routes. Catches unhandled errors, multer errors, bad JSON,

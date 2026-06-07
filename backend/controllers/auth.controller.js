@@ -1,9 +1,37 @@
 import jwt from "jsonwebtoken";
+import { ROLES } from "../middleware/rbac.middleware.js";
 
 // ─────────────────────────────────────────
 // Admin credentials — username is fixed; password comes from .env
 // ─────────────────────────────────────────
 const ADMIN_USERNAME = "admin";
+const VALID_ROLES = new Set(Object.values(ROLES));
+
+function getConfiguredUsers(adminPassword) {
+    const users = [{
+        username: ADMIN_USERNAME,
+        password: adminPassword,
+        role: ROLES.ADMIN,
+    }];
+
+    try {
+        const raw = process.env.ERP_USERS || "";
+        if (!raw.trim()) return users;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return users;
+        for (const user of parsed) {
+            const username = String(user.username || "").trim();
+            const password = String(user.password || "");
+            const role = String(user.role || "").trim().toLowerCase();
+            if (username && password && VALID_ROLES.has(role)) {
+                users.push({ username, password, role });
+            }
+        }
+    } catch (error) {
+        console.error("[auth] ERP_USERS is invalid JSON:", error.message);
+    }
+    return users;
+}
 
 // ─────────────────────────────────────────
 // @desc    Login Admin
@@ -39,7 +67,10 @@ export const login = async (req, res) => {
             });
         }
 
-        if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+        const configuredUsers = getConfiguredUsers(ADMIN_PASSWORD);
+        const matchedUser = configuredUsers.find((user) => user.username === username && user.password === password);
+
+        if (!matchedUser) {
             return res.status(401).json({
                 success: false,
                 message: "Invalid username or password",
@@ -47,7 +78,7 @@ export const login = async (req, res) => {
         }
 
         const token = jwt.sign(
-            { username, role: "admin" },
+            { username: matchedUser.username, role: matchedUser.role },
             JWT_SECRET,
             { expiresIn: "8h" }
         );
@@ -56,6 +87,7 @@ export const login = async (req, res) => {
             success: true,
             message: "Login successful",
             token,
+            user: { username: matchedUser.username, role: matchedUser.role },
         });
     } catch (error) {
         console.error("[auth] login error:", error);

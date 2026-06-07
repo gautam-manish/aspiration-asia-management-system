@@ -13,6 +13,7 @@ import {
   removeAdvancePayment,
 } from "../controllers/invoice.controller.js";
 import { uploadAdvanceSlip as uploadAdvanceMiddleware } from "../middleware/upload.middleware.js";
+import { allowAdmin, allowFinance } from "../middleware/rbac.middleware.js";
 
 const router = express.Router();
 
@@ -40,10 +41,10 @@ router.post(
 );
 
 router.route("/").get(getAllInvoices).post(createInvoice);
-router.route("/:id").get(getInvoiceById).put(updateInvoice).delete(deleteInvoice);
+router.route("/:id").get(getInvoiceById).put(allowAdmin, updateInvoice).delete(allowAdmin, deleteInvoice);
 
 // Advance payments on an existing invoice
-router.route("/:id/advance").post(addAdvancePayment);
-router.route("/:id/advance/:advanceId").delete(removeAdvancePayment);
+router.route("/:id/advance").post(allowFinance, addAdvancePayment);
+router.route("/:id/advance/:advanceId").delete(allowAdmin, removeAdvancePayment);
 
 export default router;

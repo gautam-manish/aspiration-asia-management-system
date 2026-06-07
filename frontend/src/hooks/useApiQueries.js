@@ -8,11 +8,18 @@ import {
   voucherAPI,
   invoiceAPI,
   cashReceiptAPI,
+  customerPaymentAPI,
+  vendorBillAPI,
+  vendorPaymentAPI,
+  officeExpenseAPI,
+  auditLogAPI,
+  journalEntryAPI,
   calculatorAPI,
   sundryAPI,
   salesRecordAPI,
   purchaseRecordAPI,
   bankAccountAPI,
+  reportAPI,
 } from "../api";
 
 // ── Bookings ────────────────────────────────────────────────────────────────
@@ -517,4 +524,240 @@ export function useBankAccountMutations() {
       },
     }),
   };
+}
+
+// Customer Payments
+export function useCustomerPaymentsPaginated({ search = "", customerId = "", invoiceId = "", invoiceNumber = "", status = "posted", from = "", to = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["customer-payments", "paginated", { search, customerId, invoiceId, invoiceNumber, status, from, to, page, limit }],
+    queryFn: () => customerPaymentAPI.getAll({ search, customerId, invoiceId, invoiceNumber, status, from, to, page, limit }).then((r) => ({
+      payments:   r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCustomerPayment(id) {
+  return useQuery({
+    queryKey: ["customer-payment", id],
+    queryFn: () => customerPaymentAPI.getById(id).then((r) => r.data?.data),
+    enabled: !!id,
+  });
+}
+
+export function useCustomerPaymentMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["customer-payment"] });
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+  };
+  return {
+    create: useMutation({ mutationFn: (data) => customerPaymentAPI.create(data), onSuccess: invalidate }),
+    update: useMutation({ mutationFn: ({ id, data }) => customerPaymentAPI.update(id, data), onSuccess: invalidate }),
+    void: useMutation({ mutationFn: ({ id, data }) => customerPaymentAPI.void(id, data), onSuccess: invalidate }),
+  };
+}
+
+// Reports
+export function useArAging({ asOf = "", minBalance = 0.01 } = {}) {
+  return useQuery({
+    queryKey: ["reports", "ar-aging", { asOf, minBalance }],
+    queryFn: () => reportAPI.getArAging({ asOf, minBalance }).then((r) => r.data?.data ?? { rows: [], totals: {} }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+// Vendor Bills
+export function useVendorBillsPaginated({ search = "", vendorId = "", bookingId = "", status = "", from = "", to = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["vendor-bills", "paginated", { search, vendorId, bookingId, status, from, to, page, limit }],
+    queryFn: () => vendorBillAPI.getAll({ search, vendorId, bookingId, status, from, to, page, limit }).then((r) => ({
+      bills:      r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useVendorBill(id) {
+  return useQuery({
+    queryKey: ["vendor-bill", id],
+    queryFn: () => vendorBillAPI.getById(id).then((r) => r.data?.data),
+    enabled: !!id,
+  });
+}
+
+export function useVendorBillMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["vendor-bills"] });
+    qc.invalidateQueries({ queryKey: ["vendor-bill"] });
+    qc.invalidateQueries({ queryKey: ["reports", "ap-aging"] });
+  };
+  return {
+    create: useMutation({ mutationFn: (data) => vendorBillAPI.create(data), onSuccess: invalidate }),
+    update: useMutation({ mutationFn: ({ id, data }) => vendorBillAPI.update(id, data), onSuccess: invalidate }),
+    void: useMutation({ mutationFn: ({ id, data }) => vendorBillAPI.void(id, data), onSuccess: invalidate }),
+  };
+}
+
+// Vendor Payments
+export function useVendorPaymentsPaginated({ search = "", vendorId = "", vendorBillId = "", billNumber = "", bookingId = "", status = "posted", from = "", to = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["vendor-payments", "paginated", { search, vendorId, vendorBillId, billNumber, bookingId, status, from, to, page, limit }],
+    queryFn: () => vendorPaymentAPI.getAll({ search, vendorId, vendorBillId, billNumber, bookingId, status, from, to, page, limit }).then((r) => ({
+      payments:   r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useVendorPayment(id) {
+  return useQuery({
+    queryKey: ["vendor-payment", id],
+    queryFn: () => vendorPaymentAPI.getById(id).then((r) => r.data?.data),
+    enabled: !!id,
+  });
+}
+
+export function useVendorPaymentMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["vendor-payments"] });
+    qc.invalidateQueries({ queryKey: ["vendor-payment"] });
+    qc.invalidateQueries({ queryKey: ["vendor-bills"] });
+    qc.invalidateQueries({ queryKey: ["vendor-bill"] });
+    qc.invalidateQueries({ queryKey: ["reports", "ap-aging"] });
+  };
+  return {
+    create: useMutation({ mutationFn: (data) => vendorPaymentAPI.create(data), onSuccess: invalidate }),
+    update: useMutation({ mutationFn: ({ id, data }) => vendorPaymentAPI.update(id, data), onSuccess: invalidate }),
+    void: useMutation({ mutationFn: ({ id, data }) => vendorPaymentAPI.void(id, data), onSuccess: invalidate }),
+  };
+}
+
+// Office Expenses
+export function useOfficeExpensesPaginated({ search = "", category = "", status = "posted", from = "", to = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["office-expenses", "paginated", { search, category, status, from, to, page, limit }],
+    queryFn: () => officeExpenseAPI.getAll({ search, category, status, from, to, page, limit }).then((r) => ({
+      expenses:   r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useOfficeExpense(id) {
+  return useQuery({
+    queryKey: ["office-expense", id],
+    queryFn: () => officeExpenseAPI.getById(id).then((r) => r.data?.data),
+    enabled: !!id,
+  });
+}
+
+export function useOfficeExpenseMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["office-expenses"] });
+    qc.invalidateQueries({ queryKey: ["office-expense"] });
+    qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
+  };
+  return {
+    create: useMutation({ mutationFn: (data) => officeExpenseAPI.create(data), onSuccess: invalidate }),
+    update: useMutation({ mutationFn: ({ id, data }) => officeExpenseAPI.update(id, data), onSuccess: invalidate }),
+    void: useMutation({ mutationFn: ({ id, data }) => officeExpenseAPI.void(id, data), onSuccess: invalidate }),
+  };
+}
+
+export function useApAging({ asOf = "", minBalance = 0.01 } = {}) {
+  return useQuery({
+    queryKey: ["reports", "ap-aging", { asOf, minBalance }],
+    queryFn: () => reportAPI.getApAging({ asOf, minBalance }).then((r) => r.data?.data ?? { rows: [], totals: {} }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useBookingProfitability({ from = "", to = "", search = "" } = {}) {
+  return useQuery({
+    queryKey: ["reports", "booking-profitability", { from, to, search }],
+    queryFn: () => reportAPI.getBookingProfitability({ from, to, search }).then((r) => r.data?.data ?? { rows: [], totals: {} }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCustomerLedger({ customerId = "", search = "", from = "", to = "" } = {}) {
+  return useQuery({
+    queryKey: ["reports", "customer-ledger", { customerId, search, from, to }],
+    queryFn: () => reportAPI.getCustomerLedger({ customerId, search, from, to }).then((r) => r.data?.data ?? { entries: [], totals: {} }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useVendorLedger({ vendorId = "", search = "", from = "", to = "" } = {}) {
+  return useQuery({
+    queryKey: ["reports", "vendor-ledger", { vendorId, search, from, to }],
+    queryFn: () => reportAPI.getVendorLedger({ vendorId, search, from, to }).then((r) => r.data?.data ?? { entries: [], totals: {} }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useProfitLoss({ from = "", to = "" } = {}) {
+  return useQuery({
+    queryKey: ["reports", "profit-loss", { from, to }],
+    queryFn: () => reportAPI.getProfitLoss({ from, to }).then((r) => r.data?.data ?? { totals: {}, counts: {}, byExpenseCategory: [], byMonth: [] }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useAccountingReconciliation() {
+  return useQuery({
+    queryKey: ["reports", "accounting-reconciliation"],
+    queryFn: () => reportAPI.getAccountingReconciliation().then((r) => r.data?.data ?? { status: "fail", totals: {}, checks: [] }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useAuditLogsPaginated({ search = "", entity = "", entityId = "", action = "", from = "", to = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["audit-logs", "paginated", { search, entity, entityId, action, from, to, page, limit }],
+    queryFn: () => auditLogAPI.getAll({ search, entity, entityId, action, from, to, page, limit }).then((r) => ({
+      logs:       r.data?.data       ?? [],
+      total:      r.data?.total      ?? 0,
+      page:       r.data?.page       ?? page,
+      limit:      r.data?.limit      ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useJournalEntriesPaginated({ search = "", sourceEntity = "", sourceId = "", accountCode = "", status = "", from = "", to = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["journal-entries", "paginated", { search, sourceEntity, sourceId, accountCode, status, from, to, page, limit }],
+    queryFn: () => journalEntryAPI.getAll({ search, sourceEntity, sourceId, accountCode, status, from, to, page, limit }).then((r) => ({
+      entries: r.data?.data ?? [],
+      total: r.data?.total ?? 0,
+      page: r.data?.page ?? page,
+      limit: r.data?.limit ?? limit,
+      totalPages: r.data?.totalPages ?? 1,
+    })),
+    placeholderData: (prev) => prev,
+  });
 }

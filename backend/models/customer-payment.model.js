@@ -88,7 +88,7 @@ const customerPaymentSchema = new mongoose.Schema(
     },
     source: {
       type: String,
-      enum: ["manual", "invoice-advance", "sales-record", "cash-receipt"],
+      enum: ["manual", "invoice-advance", "sales-record", "cash-receipt", "purchase-record"],
       default: "manual",
       index: true,
     },

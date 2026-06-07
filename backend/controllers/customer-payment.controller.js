@@ -57,7 +57,7 @@ function validatePaymentPayload(data) {
   if (!["cash", "bank", "card", "wallet", "cheque", "other"].includes(data.method)) {
     errors.push("Invalid payment method");
   }
-  if (!["manual", "invoice-advance", "sales-record", "cash-receipt"].includes(data.source)) {
+  if (!["manual", "invoice-advance", "sales-record", "cash-receipt", "purchase-record"].includes(data.source)) {
     errors.push("Invalid payment source");
   }
   return errors;

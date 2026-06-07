@@ -1,6 +1,10 @@
 import CashReceipt from "../models/cash-receipt.model.js";
 import Counter from "../models/counter.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
+import {
+  syncCashReceiptCustomerPayment,
+  voidLegacyCustomerPayments,
+} from "../services/legacy-finance-integration.service.js";
 
 // ─────────────────────────────────────────
 // @desc    Create Cash Receipt
@@ -21,8 +25,10 @@ export const createCashReceipt = async (req, res) => {
     // ✅ CREATE WITH AUTO NUMBER
     const receipt = await CashReceipt.create({
       ...req.body,
+      bankAccountId: req.body?.bankAccountId || null,
       registrationNumber
     });
+    await syncCashReceiptCustomerPayment(receipt, req.user);
 
     res.status(201).json({ success: true, message: "Cash receipt created successfully", data: receipt });
   } catch (error) {
@@ -104,6 +110,12 @@ export const deleteCashReceipt = async (req, res) => {
   try {
     const receipt = await CashReceipt.findByIdAndDelete(req.params.id);
     if (!receipt) return res.status(404).json({ success: false, message: "Cash receipt not found", data: null });
+    await voidLegacyCustomerPayments({
+      source: "cash-receipt",
+      sourceRefs: [receipt._id],
+      notes: `Voided after Cash Receipt ${receipt.registrationNumber || ""} deletion`.trim(),
+      user: req.user,
+    });
     res.status(200).json({ success: true, message: "Cash receipt deleted successfully", data: null });
   } catch (error) {
     console.error("deleteCashReceipt error:", error);

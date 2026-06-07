@@ -3,6 +3,10 @@ import fs from "fs";
 import path from "path";
 import { UPLOAD_ROOT } from "../middleware/upload.middleware.js";
 import escapeRegex from "../utils/escapeRegex.js";
+import {
+  syncSalesRecordCustomerPayments,
+  voidSalesRecordCustomerPayments,
+} from "../services/legacy-finance-integration.service.js";
 
 // ─────────────────────────────────────────
 //  Helper: sanitise payment entries array
@@ -71,6 +75,7 @@ export const createSalesRecord = async (req, res) => {
       outstandingBalance,
       paymentEntries:   sanitised,
     });
+    await syncSalesRecordCustomerPayments(record, req.user);
 
     res.status(201).json({ success: true, message: "Sales record created successfully", data: record });
   } catch (error) {
@@ -214,6 +219,7 @@ export const updateSalesRecord = async (req, res) => {
     if (!record) {
       return res.status(404).json({ success: false, message: "Sales record not found", data: null });
     }
+    await syncSalesRecordCustomerPayments(record, req.user);
 
     res.status(200).json({ success: true, message: "Sales record updated successfully", data: record });
   } catch (error) {
@@ -232,6 +238,7 @@ export const deleteSalesRecord = async (req, res) => {
     if (!record) {
       return res.status(404).json({ success: false, message: "Sales record not found", data: null });
     }
+    await voidSalesRecordCustomerPayments(record._id, req.user);
     res.status(200).json({ success: true, message: "Sales record deleted successfully", data: null });
   } catch (error) {
     console.error("deleteSalesRecord error:", error);

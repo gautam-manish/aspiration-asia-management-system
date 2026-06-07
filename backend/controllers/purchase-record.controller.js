@@ -2,6 +2,10 @@
 
 import PurchaseRecord from "../models/purchase-record.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
+import {
+  syncPurchaseRecordCredit,
+  voidPurchaseRecordCustomerPayments,
+} from "../services/legacy-finance-integration.service.js";
 
 // ─────────────────────────────────────────────
 // Utility
@@ -208,6 +212,8 @@ export const createOrAddToPurchaseRecord = async (req, res) => {
     });
 
     await record.save();
+    const added = record.transactions?.[record.transactions.length - 1];
+    if (added) await syncPurchaseRecordCredit(record, added, req.user);
 
     return res.status(201).json({
       success: true,
@@ -282,6 +288,8 @@ export const addTransaction = async (req, res) => {
     });
 
     await record.save();
+    const added = record.transactions?.[record.transactions.length - 1];
+    if (added) await syncPurchaseRecordCredit(record, added, req.user);
 
     return res.status(200).json({
       success: true,
@@ -373,6 +381,7 @@ export const deletePurchaseRecord = async (req, res) => {
     }
 
     await record.deleteOne();
+    await voidPurchaseRecordCustomerPayments(record._id, req.user);
 
     return res.status(200).json({
       success: true,

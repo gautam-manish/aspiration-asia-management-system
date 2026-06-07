@@ -296,7 +296,14 @@ export function useCashReceipt(id) {
 
 export function useCashReceiptMutations() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["cash-receipts"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["cash-receipts"] });
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
+  };
   return {
     create: useMutation({ mutationFn: (data) => cashReceiptAPI.create(data), onSuccess: invalidate }),
     remove: useMutation({ mutationFn: (id) => cashReceiptAPI.remove(id), onSuccess: invalidate }),
@@ -382,7 +389,14 @@ export function useSalesRecord(id) {
 
 export function useSalesRecordMutations() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["sales-records"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["sales-records"] });
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
+  };
   return {
     create: useMutation({ mutationFn: (data) => salesRecordAPI.create(data), onSuccess: invalidate }),
     update: useMutation({
@@ -430,6 +444,8 @@ export function usePurchaseRecordMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["purchase-records"] });
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
     qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
@@ -441,6 +457,8 @@ export function usePurchaseRecordMutations() {
       mutationFn: ({ id, data }) => purchaseRecordAPI.addTransaction(id, data),
       onSuccess: (_, { id }) => {
         qc.invalidateQueries({ queryKey: ["purchase-record", id] });
+        qc.invalidateQueries({ queryKey: ["customer-payments"] });
+        qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
         qc.invalidateQueries({ queryKey: ["bank-accounts"] });
         qc.invalidateQueries({ queryKey: ["bank-account"] });
       },
@@ -556,6 +574,9 @@ export function useCustomerPaymentMutations() {
     qc.invalidateQueries({ queryKey: ["customer-payment"] });
     qc.invalidateQueries({ queryKey: ["invoices"] });
     qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
   return {
     create: useMutation({ mutationFn: (data) => customerPaymentAPI.create(data), onSuccess: invalidate }),
@@ -602,6 +623,8 @@ export function useVendorBillMutations() {
     qc.invalidateQueries({ queryKey: ["vendor-bills"] });
     qc.invalidateQueries({ queryKey: ["vendor-bill"] });
     qc.invalidateQueries({ queryKey: ["reports", "ap-aging"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
   return {
     create: useMutation({ mutationFn: (data) => vendorBillAPI.create(data), onSuccess: invalidate }),
@@ -678,6 +701,8 @@ export function useOfficeExpenseMutations() {
     qc.invalidateQueries({ queryKey: ["office-expenses"] });
     qc.invalidateQueries({ queryKey: ["office-expense"] });
     qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
   return {
     create: useMutation({ mutationFn: (data) => officeExpenseAPI.create(data), onSuccess: invalidate }),

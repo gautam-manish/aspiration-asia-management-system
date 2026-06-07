@@ -1,28 +1,60 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { cashReceiptAPI } from "../../api";
+import { cashReceiptAPI, invoiceAPI } from "../../api";
 import { formatDate, numberToWords, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useCashReceiptsPaginated, useCashReceiptMutations } from "../../hooks/useApiQueries";
+import { useBankDropdown, useCashReceiptsPaginated, useCashReceiptMutations } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const EMPTY_FORM = {
   date: new Date().toISOString().split("T")[0],
   name: "", amount: "", amountInWords: "",
   cashChequeNo: "", bank: "", paymentType: "",
+  invoiceNumber: "", bookingId: "", email: "", phone: "", address: "",
+  paymentMethod: "cash", bankAccountId: "",
 };
 
 function CashReceiptModal({ onClose, onSaved }) {
   const [form, setForm]     = useState({ ...EMPTY_FORM });
   const [loading, setLoading] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
+  const { data: banks = [] } = useBankDropdown();
   const set = (k, v) => {
     setForm((f) => {
       const updated = { ...f, [k]: v };
       if (k === "amount") updated.amountInWords = numberToWords(v);
       return updated;
     });
+  };
+
+  const lookupInvoice = async () => {
+    const invoiceNumber = form.invoiceNumber.trim();
+    if (!invoiceNumber) {
+      toast.error("Enter an invoice number first");
+      return;
+    }
+    setLookingUp(true);
+    try {
+      const { data } = await invoiceAPI.getByNumber(invoiceNumber);
+      const invoice = data.data;
+      setForm((f) => ({
+        ...f,
+        invoiceNumber: invoice.invoiceNumber || invoiceNumber,
+        bookingId: invoice.bookingId || f.bookingId,
+        name: invoice.billTo?.name || f.name,
+        email: invoice.billTo?.email || f.email,
+        phone: invoice.billTo?.mobile || f.phone,
+        address: invoice.billTo?.address || f.address,
+        amount: f.amount || "",
+      }));
+      toast.success(`Invoice ${invoice.invoiceNumber} loaded`);
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setLookingUp(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -48,11 +80,34 @@ function CashReceiptModal({ onClose, onSaved }) {
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Accounting Link</p>
+              <Field label="Invoice Number">
+                <div className="flex gap-2">
+                  <input className="input flex-1" value={form.invoiceNumber} onChange={(e) => set("invoiceNumber", e.target.value)} placeholder="e.g. ASA47821396" />
+                  <button type="button" onClick={lookupInvoice} disabled={lookingUp || !form.invoiceNumber.trim()} className="btn-secondary text-xs whitespace-nowrap">
+                    {lookingUp ? "Fetching..." : <><i className="fa fa-search" /> Fetch</>}
+                  </button>
+                </div>
+              </Field>
+              {form.bookingId && <p className="text-xs text-slate-400 mt-1">Booking ID: <span className="font-mono">{form.bookingId}</span></p>}
+            </div>
             <Field label="Date" required>
               <input className="input" type="date" value={form.date} onChange={(e) => set("date", e.target.value)} required />
             </Field>
             <Field label="Received From (Name)" required>
               <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} required placeholder="Client / Company name" />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Email">
+                <input className="input" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
+              </Field>
+              <Field label="Phone">
+                <input className="input" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+              </Field>
+            </div>
+            <Field label="Address">
+              <input className="input" value={form.address} onChange={(e) => set("address", e.target.value)} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Amount (Rs.)" required>
@@ -67,6 +122,17 @@ function CashReceiptModal({ onClose, onSaved }) {
             </Field>
             <Field label="Bank">
               <input className="input" value={form.bank} onChange={(e) => set("bank", e.target.value)} placeholder="Bank name (if applicable)" />
+            </Field>
+            <Field label="Payment Method">
+              <select className="input" value={form.paymentMethod} onChange={(e) => set("paymentMethod", e.target.value)}>
+                {["cash", "bank", "card", "wallet", "cheque", "other"].map((method) => <option key={method} value={method}>{method}</option>)}
+              </select>
+            </Field>
+            <Field label="Bank Account">
+              <select className="input" value={form.bankAccountId} onChange={(e) => set("bankAccountId", e.target.value)}>
+                <option value="">Not linked</option>
+                {banks.map((bank) => <option key={bank._id} value={bank._id}>{bank.bankName}</option>)}
+              </select>
             </Field>
             <Field label="Payment Against For">
               <input className="input" value={form.paymentType} onChange={(e) => set("paymentType", e.target.value)} placeholder="Nepal Tour" />

@@ -6,7 +6,7 @@ import { customerPaymentAPI, invoiceAPI } from "../../api";
 import { notifyError } from "../../utils/helpers";
 import { ConfirmModal, Empty, Field, PageLoader, Pagination, SearchBar } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useCustomerPaymentMutations, useCustomerPaymentsPaginated } from "../../hooks/useApiQueries";
+import { useBankDropdown, useCustomerPaymentMutations, useCustomerPaymentsPaginated } from "../../hooks/useApiQueries";
 import { useAuth } from "../../context/AuthContext";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -25,6 +25,7 @@ const EMPTY_FORM = {
   amount: "",
   method: "bank",
   referenceCode: "",
+  bankAccountId: "",
   notes: "",
 };
 
@@ -51,8 +52,10 @@ export function PaymentModal({ payment, onClose, onSaved }) {
     amount: payment.amount || "",
     method: payment.method || "bank",
     referenceCode: payment.referenceCode || "",
+    bankAccountId: payment.bankAccountId || "",
     notes: payment.notes || "",
   } : { ...EMPTY_FORM });
+  const { data: banks = [] } = useBankDropdown();
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
 
@@ -181,6 +184,12 @@ export function PaymentModal({ payment, onClose, onSaved }) {
                     <option value="wallet">Wallet</option>
                     <option value="cheque">Cheque</option>
                     <option value="other">Other</option>
+                  </select>
+                </Field>
+                <Field label="Bank Account">
+                  <select className="input" value={form.bankAccountId} onChange={(e) => set("bankAccountId", e.target.value)}>
+                    <option value="">Not linked</option>
+                    {banks.map((bank) => <option key={bank._id} value={bank._id}>{bank.bankName}</option>)}
                   </select>
                 </Field>
                 <Field label="Reference Code">

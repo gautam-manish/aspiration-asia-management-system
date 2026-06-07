@@ -4,6 +4,7 @@ import VendorBill from "../models/vendor-bill.model.js";
 import VendorPayment from "../models/vendor-payment.model.js";
 import Booking from "../models/booking.model.js";
 import OfficeExpense from "../models/office-expense.model.js";
+import PurchaseRecord from "../models/purchase-record.model.js";
 import { buildAccountingReconciliation } from "../services/accounting-reconciliation.service.js";
 
 const toDateOnly = (value) => {
@@ -402,12 +403,26 @@ export const getCustomerLedger = async (req, res) => {
       }
     }
 
-    const [invoices, payments] = await Promise.all([
+    const purchaseFilter = {};
+    if (from || to) {
+      purchaseFilter.transactions = {
+        $elemMatch: {
+          type: "dr",
+          ...(from ? { date: { $gte: String(from) } } : {}),
+          ...(to ? { date: { ...(from ? { $gte: String(from) } : {}), $lte: String(to) } } : {}),
+        },
+      };
+    }
+
+    const [invoices, payments, purchaseRecords] = await Promise.all([
       Invoice.find(invoiceFilter)
         .select("invoiceNumber invoiceDate bookingId customerId billTo total currency")
         .lean(),
       CustomerPayment.find(paymentFilter)
         .select("paymentNumber paymentDate invoiceNumber bookingId customerId customer amount method referenceCode")
+        .lean(),
+      customerId ? [] : PurchaseRecord.find(purchaseFilter)
+        .select("debtorName debtorEmail transactions")
         .lean(),
     ]);
 
@@ -443,6 +458,25 @@ export const getCustomerLedger = async (req, res) => {
         credit: roundMoney(payment.amount),
         currency: "Rs.",
       })),
+      ...purchaseRecords.flatMap((record) => (record.transactions || [])
+        .filter((txn) => txn.type === "dr")
+        .filter((txn) => (!from || txn.date >= from) && (!to || txn.date <= to))
+        .map((txn) => ({
+          sourceId: txn._id,
+          sourcePath: `/purchase-records/${record._id}`,
+          date: toDateOnly(txn.date),
+          partyId: "",
+          partyName: record.debtorName || "Unassigned",
+          partyEmail: record.debtorEmail || "",
+          reference: txn.refNo || "",
+          secondaryReference: "",
+          bookingId: "",
+          type: "purchase-record-debit",
+          description: txn.description || "Purchase record debit",
+          debit: roundMoney(txn.amount),
+          credit: 0,
+          currency: "Rs.",
+        }))),
     ];
 
     if (search) {

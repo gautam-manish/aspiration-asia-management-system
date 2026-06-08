@@ -1,4 +1,5 @@
 import Booking from "../models/booking.model.js";
+import Sundry from "../models/sundry.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
 
 // ─────────────────────────────────────────
@@ -17,6 +18,33 @@ async function generateQueryId() {
   });
 
   return `${prefix}${100 + count}`;
+}
+
+async function findSundryDebtor(customerId) {
+  if (!customerId) return null;
+  return Sundry.findOne({
+    _id: customerId,
+    $or: [
+      { roles: "customer" },
+      { roles: { $exists: false }, type: "debtor" },
+    ],
+  }).lean();
+}
+
+async function enrichBookingParty(booking) {
+  if (!booking) return booking;
+  const data = typeof booking.toObject === "function" ? booking.toObject() : { ...booking };
+  if ((!data.companyName || !data.contactPerson) && data.customerId) {
+    const debtor = await findSundryDebtor(data.customerId);
+    if (debtor) {
+      data.companyName = data.companyName || debtor.companyName || "";
+      data.contactPerson = data.contactPerson || debtor.contactPerson || "";
+      data.email = data.email || debtor.email || "";
+      data.mobile = data.mobile || debtor.phone || "";
+      data.address = data.address || debtor.address || "";
+    }
+  }
+  return data;
 }
 
 // ─────────────────────────────────────────
@@ -51,6 +79,8 @@ export const createBooking = async (req, res) => {
     const {
       queryId: providedId,
       customerId,
+      companyName,
+      contactPerson,
       clientName,
       email,
       mobile,
@@ -75,9 +105,20 @@ export const createBooking = async (req, res) => {
         .status(400)
         .json({
           success: false,
-          message: "Client / Agent name is required",
+          message: "Client name is required",
           data: null,
         });
+    }
+    if (!customerId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Sundry debtor is required", data: null });
+    }
+    const debtor = await findSundryDebtor(customerId);
+    if (!debtor) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Selected party must be a sundry debtor", data: null });
     }
     if (!email) {
       return res
@@ -107,10 +148,12 @@ export const createBooking = async (req, res) => {
     const booking = await Booking.create({
       queryId,
       customerId: customerId || null,
+      companyName: debtor.companyName || companyName || "",
+      contactPerson: debtor.contactPerson || contactPerson || "",
       clientName,
-      email,
-      mobile,
-      address,
+      email: email || debtor.email || "",
+      mobile: mobile || debtor.phone || "",
+      address: address || debtor.address || "",
       destination,
       pickupPoint,
       dropPoint,
@@ -165,6 +208,7 @@ export const getAllBookings = async (req, res) => {
       filter.$or = [
         { clientName: { $regex: escapeRegex(search), $options: "i" } },
         { companyName: { $regex: escapeRegex(search), $options: "i" } },
+        { contactPerson: { $regex: escapeRegex(search), $options: "i" } },
         { queryId: { $regex: escapeRegex(search), $options: "i" } },
         { destination: { $regex: escapeRegex(search), $options: "i" } },
       ];
@@ -228,12 +272,13 @@ export const getBookingById = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Booking not found", data: null });
     }
+    const enriched = await enrichBookingParty(booking);
     res
       .status(200)
       .json({
         success: true,
         message: "Booking fetched successfully",
-        data: booking,
+        data: enriched,
       });
   } catch (error) {
     console.error("getBookingById error:", error);
@@ -257,7 +302,8 @@ export const getBookingByQueryId = async (req, res) => {
     if (!booking) {
       return res.status(404).json({ success: false, message: "Booking not found", data: null });
     }
-    res.status(200).json({ success: true, message: "Booking fetched successfully", data: booking });
+    const enriched = await enrichBookingParty(booking);
+    res.status(200).json({ success: true, message: "Booking fetched successfully", data: enriched });
   } catch (error) {
     console.error("getBookingByQueryId error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch booking.", data: null });
@@ -285,7 +331,7 @@ export const updateBooking = async (req, res) => {
 
     // Whitelist allowed fields to prevent mass assignment
     const allowedFields = [
-      "customerId", "clientName", "companyName", "email", "mobile", "address",
+      "customerId", "clientName", "companyName", "contactPerson", "email", "mobile", "address",
       "destination", "pickupPoint", "dropPoint",
       "arrivalDate", "departureDate", "noOfDays",
       "adults", "childEB", "childNoEB", "childU5",
@@ -296,6 +342,16 @@ export const updateBooking = async (req, res) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
     if (updates.customerId === "") updates.customerId = null;
+    if (updates.customerId) {
+      const debtor = await findSundryDebtor(updates.customerId);
+      if (!debtor) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Selected party must be a sundry debtor", data: null });
+      }
+      updates.companyName = debtor.companyName || updates.companyName || "";
+      updates.contactPerson = debtor.contactPerson || updates.contactPerson || "";
+    }
 
     // Prevent re-confirming a cancelled booking via full update
     const existing = await Booking.findById(req.params.id);

@@ -1,36 +1,39 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { purchaseRecordAPI, sundryAPI } from "../../api";
+import { purchaseRecordAPI } from "../../api";
 import { notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { usePurchaseRecordsPaginated, usePurchaseRecordMutations, useSundry, useBankDropdown } from "../../hooks/useApiQueries";
+import { usePurchaseRecordsPaginated, usePurchaseRecordMutations, useSundryDropdown, useBankAccounts } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 
 function AddModal({ onClose, onSaved }) {
   // Cached sundry list — fetched once and reused on every modal open.
-  const { data: debtors = [] } = useSundry();
-  const { data: bankList = [] } = useBankDropdown();
+  const qc = useQueryClient();
+  const { data: vendors = [], refetch: refetchVendors } = useSundryDropdown({ role: "vendor" });
+  const { data: bankList = [] } = useBankAccounts();
   const [query,    setQuery]    = useState("");
   const [selected, setSelected] = useState(null);
   const [showDrop, setShowDrop] = useState(false);
   const [txn,      setTxn]      = useState({ date: "", refNo: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
-  const [opening,  setOpening]  = useState("");
   const [loading,  setLoading]  = useState(false);
-  // Holds the existing PurchaseRecord doc when one is found for the typed debtor.
+  // Holds the existing PurchaseRecord doc when one is found for the selected vendor.
   // null = unknown, false = no existing account (new ledger), object = existing.
   const [existing, setExisting] = useState(null);
   const [checking, setChecking] = useState(false);
 
-  const filtered = debtors.filter((d) =>
-    d.contactPerson.toLowerCase().includes(query.toLowerCase()) ||
+  useEffect(() => { refetchVendors(); }, [refetchVendors]);
+
+  const filtered = vendors.filter((d) =>
+    (d.contactPerson || "").toLowerCase().includes(query.toLowerCase()) ||
     (d.companyName || "").toLowerCase().includes(query.toLowerCase())
   );
+  const selectedBank = bankList.find((b) => b.bankName === txn.bank);
 
-  // Look up an existing ledger by debtor name. Debounced lightly via blur/select.
+  // Look up an existing ledger by vendor name. Debounced lightly via blur/select.
   const checkExistingByName = async (name) => {
     const trimmed = (name || "").trim();
     if (!trimmed) { setExisting(null); return; }
@@ -38,8 +41,6 @@ function AddModal({ onClose, onSaved }) {
     try {
       const { data } = await purchaseRecordAPI.getByDebtor(trimmed);
       setExisting(data?.data || null);
-      // Clear the opening balance input since it isn't applicable.
-      if (data?.data) { setOpening(""); }
     } catch (err) {
       const status = err?.response?.status;
       if (status === 404) {
@@ -52,7 +53,7 @@ function AddModal({ onClose, onSaved }) {
     }
   };
 
-  const selectDebtor = (d) => {
+  const selectVendor = (d) => {
     setSelected(d);
     setQuery(d.contactPerson + (d.companyName ? ` (${d.companyName})` : ""));
     setShowDrop(false);
@@ -64,12 +65,15 @@ function AddModal({ onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const debtorNameClean = selected
-      ? selected.contactPerson
-      : query.replace(/\s*\(.*\)\s*$/, "").trim();
-    if (!debtorNameClean) { toast.error("Select or enter a debtor name"); return; }
+    if (!selected) { toast.error("Select a creditor/vendor from the dropdown"); return; }
+    const debtorNameClean = selected.contactPerson;
     if (!txn.date)   { toast.error("Transaction date required"); return; }
     if (!txn.amount || Number(txn.amount) <= 0) { toast.error("Amount must be > 0"); return; }
+    if (txn.type === "dr" && !txn.bank) { toast.error("Select a bank account for debit entry"); return; }
+    if (txn.type === "dr" && selectedBank && Number(txn.amount) > Number(selectedBank.balance || 0)) {
+      toast.error(`Amount exceeds selected bank balance (${fmt(selectedBank.balance)})`);
+      return;
+    }
     setLoading(true);
     try {
       await purchaseRecordAPI.create({
@@ -81,10 +85,13 @@ function AddModal({ onClose, onSaved }) {
         debtorEmail:   selected?.email        || existing?.debtorEmail   || "",
         // For new ledgers, send opening. For existing ledgers, omit it
         // so the controller doesn't try to override (controller only honors it on create anyway).
-        ...(existing ? {} : { openingBalance: Number(opening) || 0 }),
-        transaction:   { ...txn, amount: Number(txn.amount) },
+        ...(existing ? {} : { openingBalance: Number(selected.openingBalance) || 0 }),
+        transaction:   { ...txn, bank: txn.type === "dr" ? txn.bank : "", amount: Number(txn.amount) },
       });
       toast.success(existing ? "Entry added to existing ledger ✓" : "New ledger created ✓");
+      qc.invalidateQueries({ queryKey: ["purchase-records"] });
+      qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+      qc.invalidateQueries({ queryKey: ["bank-account"] });
       onSaved();
     } catch (err) {
       notifyError(err);
@@ -102,13 +109,13 @@ function AddModal({ onClose, onSaved }) {
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-4" style={{ maxHeight: "70vh", overflowY: "auto" }}>
-            {/* Debtor */}
+            {/* Creditor / Vendor */}
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Debtor *</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Creditor / Vendor *</p>
               <div className="relative">
                 <input
                   className="input"
-                  placeholder="Search or type debtor name…"
+                  placeholder="Search creditor/vendor..."
                   value={query}
                   onChange={(e) => {
                     setQuery(e.target.value);
@@ -120,18 +127,14 @@ function AddModal({ onClose, onSaved }) {
                   onBlur={() => {
                     // Allow click on dropdown options to register before checking.
                     setTimeout(() => {
-                      // Strip any trailing "(Company)" suffix when typed manually
-                      const cleanName = selected
-                        ? selected.contactPerson
-                        : query.replace(/\s*\(.*\)\s*$/, "");
-                      checkExistingByName(cleanName);
+                      if (selected) checkExistingByName(selected.contactPerson);
                     }, 150);
                   }}
                 />
                 {showDrop && filtered.length > 0 && (
                   <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                     {filtered.map((d) => (
-                      <button key={d._id} type="button" onClick={() => selectDebtor(d)}
+                      <button key={d._id} type="button" onClick={() => selectVendor(d)}
                         className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 border-b border-slate-100 last:border-0">
                         <p className="font-medium text-slate-800">{d.contactPerson}</p>
                         {d.companyName && <p className="text-xs text-slate-400">{d.companyName}</p>}
@@ -148,8 +151,7 @@ function AddModal({ onClose, onSaved }) {
                   <div>
                     <p className="font-semibold">Existing ledger found</p>
                     <p className="text-xs text-slate-600 mt-0.5">
-                      This entry will be appended to <span className="font-medium">{existing.debtorName}</span>'s account.
-                      Opening balance is locked at <span className="font-mono">{fmt(existing.openingBalance)}</span>.
+                      This entry will be appended to <span className="font-medium">{existing.debtorName}</span>'s vendor account.
                     </p>
                   </div>
                 </div>
@@ -160,9 +162,9 @@ function AddModal({ onClose, onSaved }) {
                 <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
                   <i className="fa fa-exclamation-circle mt-0.5" />
                   <div>
-                    <p className="font-semibold">No account exists for this debtor</p>
+                    <p className="font-semibold">No purchase ledger exists for this vendor</p>
                     <p className="text-xs text-amber-700 mt-0.5">
-                      A new ledger will be created on save. Set the opening balance below.
+                      A new ledger will be created using the opening balance already stored in Sundry.
                     </p>
                   </div>
                 </div>
@@ -172,14 +174,6 @@ function AddModal({ onClose, onSaved }) {
                 <p className="mt-2 text-xs text-slate-400">Checking existing account…</p>
               )}
 
-              {/* Opening balance — only when no existing account yet */}
-              {!existing && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                  <Field label="Opening Balance (Rs.)">
-                    <input className="input" type="number" min="0" step="any" value={opening} onChange={(e) => setOpening(e.target.value)} />
-                  </Field>
-                </div>
-              )}
             </div>
 
             {/* Transaction */}
@@ -215,17 +209,19 @@ function AddModal({ onClose, onSaved }) {
                   <input className="input" type="number" min="0.01" step="0.01" value={txn.amount} onChange={(e) => setT("amount", e.target.value)} required />
                 </Field>
                 <Field label="Description" className="col-span-2">
-                  <input className="input" value={txn.description} onChange={(e) => setT("description", e.target.value)} />
+                  <textarea className="input min-h-[90px]" value={txn.description} onChange={(e) => setT("description", e.target.value)} />
                 </Field>
-                <Field label="Bank">
-                  <select className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} disabled={txn.type === "cr"}>
+                {txn.type === "dr" && (
+                  <Field label="Bank Account *">
+                  <select className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} required>
                     <option value="">— Select Bank —</option>
                     {bankList.map((b) => (
-                      <option key={b._id} value={b.bankName}>{b.bankName}</option>
+                      <option key={b._id} value={b.bankName}>{b.bankName} - Balance {fmt(b.balance)}</option>
                     ))}
-                    <option value="Cash">Cash</option>
                   </select>
+                  {selectedBank && <p className="text-xs text-slate-400 mt-1">Available balance: {fmt(selectedBank.balance)}</p>}
                 </Field>
+                )}
               </div>
             </div>
           </div>
@@ -282,7 +278,7 @@ export default function PurchaseRecordsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Purchase Records</h1>
-          <p className="page-subtitle">Debtor ledger management</p>
+          <p className="page-subtitle">Creditor / vendor ledger management</p>
         </div>
         <button onClick={() => setModal(true)} className="btn-primary">
           <i className="fa fa-plus" /> Add Entry
@@ -291,7 +287,7 @@ export default function PurchaseRecordsPage() {
 
       {/* Summary (current page) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Debtors</p><p className="text-2xl font-bold text-slate-800">{total}</p></div>
+        <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Creditors / Vendors</p><p className="text-2xl font-bold text-slate-800">{total}</p></div>
         <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Debit (this page)</p><p className="text-xl font-bold text-red-600">{fmt(totalDR)}</p></div>
         <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Total Credit (this page)</p><p className="text-xl font-bold text-green-600">{fmt(totalCR)}</p></div>
         <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">Net Balance (this page)</p><p className={`text-xl font-bold ${totalDR - totalCR >= 0 ? "text-red-600" : "text-green-600"}`}>{fmt(Math.abs(totalDR - totalCR))} {totalDR - totalCR >= 0 ? "DR" : "CR"}</p></div>
@@ -299,11 +295,11 @@ export default function PurchaseRecordsPage() {
 
       <div className="card">
         <div className="card-header">
-          <SearchBar value={search} onChange={setSearch} placeholder="Search by debtor name…" />
+          <SearchBar value={search} onChange={setSearch} placeholder="Search by creditor/vendor name..." />
           <span className="text-sm text-slate-500">
             {total === 0
-              ? "No debtors"
-              : `${(page - 1) * 50 + 1}–${Math.min(page * 50, total)} of ${total} debtor${total !== 1 ? "s" : ""}`}
+              ? "No creditors/vendors"
+              : `${(page - 1) * 50 + 1}–${Math.min(page * 50, total)} of ${total} creditor/vendor${total !== 1 ? "s" : ""}`}
           </span>
         </div>
 
@@ -316,9 +312,8 @@ export default function PurchaseRecordsPage() {
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>Debtor</th>
+                    <th>Creditor / Vendor</th>
                     <th>PAN / VAT</th>
-                    <th>Opening Balance</th>
                     <th>Total Debit</th>
                     <th>Total Credit</th>
                     <th>Closing Balance</th>
@@ -338,7 +333,6 @@ export default function PurchaseRecordsPage() {
                           {r.debtorCompany && <p className="text-xs text-slate-400">{r.debtorCompany}</p>}
                         </td>
                         <td className="text-slate-500 text-sm font-mono">{r.debtorPan || "—"}</td>
-                        <td className="text-sm">{fmt(r.openingBalance)}</td>
                         <td className="text-red-600 font-medium text-sm">{fmt(r.totalDebit)}</td>
                         <td className="text-green-600 font-medium text-sm">{fmt(r.totalCredit)}</td>
                         <td>

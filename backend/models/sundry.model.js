@@ -73,16 +73,6 @@ const sundrySchema = new mongoose.Schema(
       type:    Number,
       default: 0,
     },
-    creditLimit: {
-      type:    Number,
-      default: 0,
-      min:     [0, "Credit limit cannot be negative"],
-    },
-    paymentTermsDays: {
-      type:    Number,
-      default: 0,
-      min:     [0, "Payment terms cannot be negative"],
-    },
     notes: {
       type:    String,
       trim:    true,
@@ -98,7 +88,9 @@ sundrySchema.pre("validate", function () {
   if (!Array.isArray(this.roles) || this.roles.length === 0) {
     this.roles = this.type === "creditor" ? ["vendor"] : ["customer"];
   }
-  this.roles = [...new Set(this.roles.filter(Boolean))];
+  const role = [...new Set(this.roles.filter(Boolean))][0] === "vendor" ? "vendor" : "customer";
+  this.roles = [role];
+  this.type = role === "vendor" ? "creditor" : "debtor";
 });
 
 sundrySchema.index({ contactPerson: 1 });

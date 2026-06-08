@@ -1,4 +1,5 @@
 import Sundry from "../models/sundry.model.js";
+import Counter from "../models/counter.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
 
 const COUNTRIES = ["Nepal", "India", "Bhutan", ""];
@@ -18,11 +19,12 @@ function validateSundryPayload(body = {}) {
   const requestedRoles = Array.isArray(body.roles)
     ? body.roles
     : (body.role ? [body.role] : []);
-  const roles = [...new Set(
+  let roles = [...new Set(
     requestedRoles
       .map((r) => String(r || "").trim().toLowerCase())
       .filter(Boolean),
   )];
+  if (roles.length > 1) roles = [roles[0]];
 
   const data = {
     companyName: String(body.companyName || "").trim(),
@@ -37,8 +39,6 @@ function validateSundryPayload(body = {}) {
     roles,
     status: String(body.status || "active").trim().toLowerCase(),
     openingBalance: Number(body.openingBalance) || 0,
-    creditLimit: Number(body.creditLimit) || 0,
-    paymentTermsDays: Number(body.paymentTermsDays) || 0,
     notes: String(body.notes || "").trim(),
   };
 
@@ -50,6 +50,8 @@ function validateSundryPayload(body = {}) {
   if (data.roles.length === 0) {
     data.roles = data.type === "creditor" ? ["vendor"] : ["customer"];
   }
+  data.roles = data.roles[0] === "vendor" ? ["vendor"] : ["customer"];
+  data.type = data.roles[0] === "vendor" ? "creditor" : "debtor";
 
   const errors = [];
   if (!data.contactPerson) errors.push("Contact person is required");
@@ -63,11 +65,8 @@ function validateSundryPayload(body = {}) {
   if (!TYPES.includes(data.type)) errors.push("Type must be 'debtor' or 'creditor'");
   if (!COUNTRIES.includes(data.country)) errors.push("Country must be Nepal, India, Bhutan, or empty");
   if (!STATUSES.includes(data.status)) errors.push("Status must be active or inactive");
-  if (data.roles.some((r) => !ROLES.includes(r))) errors.push("Roles must be customer, vendor, or both");
+  if (data.roles.length !== 1 || data.roles.some((r) => !ROLES.includes(r))) errors.push("Role must be customer or vendor");
   if (data.openingBalance < 0) errors.push("Opening balance cannot be negative");
-  if (data.creditLimit < 0) errors.push("Credit limit cannot be negative");
-  if (data.paymentTermsDays < 0) errors.push("Payment terms cannot be negative");
-
   if (data.email && !isEmail(data.email)) errors.push("Email is not a valid address");
   if (data.phone && !phoneOk(data.phone)) errors.push("Phone must be 7-15 digits (optionally starting with +)");
   if (data.panVatGst && !panOk(data.panVatGst)) errors.push("PAN/VAT/GST must be 5-20 alphanumeric characters");
@@ -76,6 +75,34 @@ function validateSundryPayload(body = {}) {
   }
 
   return { errors, data };
+}
+
+async function generatePartyCode(role) {
+  const prefix = role === "vendor" ? "VEN" : "CUS";
+  for (let attempts = 0; attempts < 5; attempts += 1) {
+    const counter = await Counter.findOneAndUpdate(
+      { name: `sundry-${role}` },
+      { $inc: { seq: 1 } },
+      { returnDocument: "after", upsert: true },
+    );
+    const code = `${prefix}-${String(counter.seq).padStart(5, "0")}`;
+    const exists = await Sundry.exists({ partyCode: code });
+    if (!exists) return code;
+  }
+  throw new Error("Failed to generate party code");
+}
+
+async function previewPartyCode(role) {
+  const prefix = role === "vendor" ? "VEN" : "CUS";
+  const counter = await Counter.findOne({ name: `sundry-${role}` }).lean();
+  let seq = Number(counter?.seq || 0) + 1;
+  for (let attempts = 0; attempts < 20; attempts += 1) {
+    const code = `${prefix}-${String(seq).padStart(5, "0")}`;
+    const exists = await Sundry.exists({ partyCode: code });
+    if (!exists) return code;
+    seq += 1;
+  }
+  throw new Error("Failed to preview party code");
 }
 
 function buildDuplicateQuery(data, ignoreId = null) {
@@ -143,6 +170,8 @@ export const createSundry = async (req, res) => {
       return res.status(400).json({ success: false, message: errors.join(". "), data: null });
     }
 
+    data.partyCode = await generatePartyCode(data.roles[0]);
+
     const dupQuery = buildDuplicateQuery(data);
     if (dupQuery) {
       const existing = await Sundry.findOne(dupQuery);
@@ -156,6 +185,21 @@ export const createSundry = async (req, res) => {
   } catch (error) {
     console.error("createSundry error:", error);
     return res.status(500).json({ success: false, message: "Failed to create party entry.", data: null });
+  }
+};
+
+export const getNextSundryCode = async (req, res) => {
+  try {
+    const role = String(req.query.role || "customer").toLowerCase() === "vendor" ? "vendor" : "customer";
+    const partyCode = await previewPartyCode(role);
+    return res.status(200).json({
+      success: true,
+      message: "Next party code generated",
+      data: { partyCode, role },
+    });
+  } catch (error) {
+    console.error("getNextSundryCode error:", error);
+    return res.status(500).json({ success: false, message: "Failed to generate party code.", data: null });
   }
 };
 
@@ -229,7 +273,7 @@ export const getSundryDropdown = async (req, res) => {
     addCondition(filter, { $or: [{ status: "active" }, { status: { $exists: false } }] });
 
     const entries = await Sundry.find(filter)
-      .select("partyCode contactPerson companyName email phone address panVatGst country type roles")
+      .select("partyCode contactPerson companyName email phone address panVatGst country type roles openingBalance")
       .sort({ contactPerson: 1 })
       .lean();
 
@@ -259,10 +303,16 @@ export const updateSundry = async (req, res) => {
       return res.status(400).json({ success: false, message: "No data provided to update", data: null });
     }
 
-    const { errors, data } = validateSundryPayload(req.body);
+    const existingEntry = await Sundry.findById(req.params.id).lean();
+    if (!existingEntry) {
+      return res.status(404).json({ success: false, message: "Party entry not found", data: null });
+    }
+
+    const { errors, data } = validateSundryPayload({ ...existingEntry, ...req.body });
     if (errors.length) {
       return res.status(400).json({ success: false, message: errors.join(". "), data: null });
     }
+    data.partyCode = existingEntry.partyCode || await generatePartyCode(data.roles[0]);
 
     const dupQuery = buildDuplicateQuery(data, req.params.id);
     if (dupQuery) {
@@ -277,10 +327,6 @@ export const updateSundry = async (req, res) => {
       { $set: data },
       { returnDocument: "after", runValidators: true },
     );
-
-    if (!entry) {
-      return res.status(404).json({ success: false, message: "Party entry not found", data: null });
-    }
 
     return res.status(200).json({ success: true, message: "Party entry updated successfully", data: entry });
   } catch (error) {

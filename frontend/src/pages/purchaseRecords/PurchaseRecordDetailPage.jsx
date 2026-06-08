@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { purchaseRecordAPI } from "../../api";
 import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
-import { usePurchaseRecord, useBankDropdown } from "../../hooks/useApiQueries";
+import { usePurchaseRecord, useBankAccounts } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const fmt = (n) => Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -26,7 +26,7 @@ export default function PurchaseRecordDetailPage() {
 
   const qc = useQueryClient();
   const { data: recordData, isLoading: recordLoading, error: recordError } = usePurchaseRecord(id);
-  const { data: bankList = [] } = useBankDropdown();
+  const { data: bankList = [] } = useBankAccounts();
 
   useEffect(() => { if (recordData) setRecord(recordData); }, [recordData]);
   useEffect(() => { setLoading(recordLoading); }, [recordLoading]);
@@ -35,18 +35,27 @@ export default function PurchaseRecordDetailPage() {
   const loadRecord = () => qc.invalidateQueries({ queryKey: ["purchase-record", id] });
 
   const setT = (k, v) => setTxn((t) => ({ ...t, [k]: v }));
+  const selectedBank = bankList.find((b) => b.bankName === txn.bank);
 
   const handleAddTxn = async (e) => {
     e.preventDefault();
     if (!txn.date)   { toast.error("Date required"); return; }
     if (!txn.amount || Number(txn.amount) <= 0) { toast.error("Amount must be > 0"); return; }
+    if (txn.type === "dr" && !txn.bank) { toast.error("Select a bank account for debit entry"); return; }
+    if (txn.type === "dr" && selectedBank && Number(txn.amount) > Number(selectedBank.balance || 0)) {
+      toast.error(`Amount exceeds selected bank balance (Rs. ${fmt(selectedBank.balance)})`);
+      return;
+    }
     setSaving(true);
     try {
-      await purchaseRecordAPI.addTransaction(id, { transaction: { ...txn, amount: Number(txn.amount) } });
+      await purchaseRecordAPI.addTransaction(id, { transaction: { ...txn, bank: txn.type === "dr" ? txn.bank : "", amount: Number(txn.amount) } });
       toast.success("Transaction added ✓");
       setAddModal(false);
       setTxn({ date: "", refNo: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
       loadRecord();
+      qc.invalidateQueries({ queryKey: ["purchase-records"] });
+      qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+      qc.invalidateQueries({ queryKey: ["bank-account"] });
     } catch (err) {
       notifyError(err);
     } finally {
@@ -121,9 +130,9 @@ export default function PurchaseRecordDetailPage() {
       <!-- ═══════ TOP SUMMARY ═══════ -->
       <div style="display:flex;gap:0;margin-bottom:18px;align-items:flex-start;">
 
-        <!-- Left: Ledger / Debtor info -->
+        <!-- Left: Ledger / Creditor/Vendor info -->
         <div style="flex:1;padding-right:14px;font-size:11px;line-height:1.85;">
-          <div style="font-weight:700;color:#0f172a;">LEDGER BALANCE REPORT : SUNDRY DEBTORS</div>
+          <div style="font-weight:700;color:#0f172a;">LEDGER BALANCE REPORT : SUNDRY CREDITORS / VENDORS</div>
           <div><strong>FISCAL YEAR :</strong> ${pdfFiscal || record.fiscalYear || "—"}</div>
           <div><strong>NAME :</strong> ${(record.debtorName || "").toUpperCase()}</div>
           <div><strong>PAN :</strong> ${record.debtorPan || "—"}</div>
@@ -241,9 +250,9 @@ export default function PurchaseRecordDetailPage() {
         ))}
       </div>
 
-      {/* Debtor Info */}
+      {/* Creditor / Vendor Info */}
       <div className="card mb-4">
-        <div className="card-header"><h3 className="font-semibold text-slate-700">Debtor Information</h3></div>
+        <div className="card-header"><h3 className="font-semibold text-slate-700">Creditor / Vendor Information</h3></div>
         <div className="card-body grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
           {[["Name", record.debtorName],["Company", record.debtorCompany],["PAN/VAT", record.debtorPan],["Address", record.debtorAddress],["Phone", record.debtorPhone],["Email", record.debtorEmail],["Fiscal Year", record.fiscalYear]].map(([lbl, val]) => (
             <div key={lbl}><p className="text-xs text-slate-400 mb-0.5">{lbl}</p><p className="font-medium text-slate-800">{val || "—"}</p></div>
@@ -318,16 +327,18 @@ export default function PurchaseRecordDetailPage() {
                   <Field label="Ref / Voucher No."><input className="input" value={txn.refNo} onChange={(e) => setT("refNo", e.target.value)} /></Field>
                   <Field label="Client Name"><input className="input" value={txn.clientName} onChange={(e) => setT("clientName", e.target.value)} /></Field>
                   <Field label="Amount (Rs.) *"><input className="input" type="number" min="0.01" step="0.01" value={txn.amount} onChange={(e) => setT("amount", e.target.value)} required /></Field>
-                  <Field label="Description" className="col-span-2"><input className="input" value={txn.description} onChange={(e) => setT("description", e.target.value)} /></Field>
-                  <Field label="Bank">
-                    <select className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} disabled={txn.type === "cr"}>
+                  <Field label="Description" className="col-span-2"><textarea className="input min-h-[90px]" value={txn.description} onChange={(e) => setT("description", e.target.value)} /></Field>
+                  {txn.type === "dr" && (
+                    <Field label="Bank Account *">
+                    <select className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} required>
                       <option value="">— Select Bank —</option>
                       {bankList.map((b) => (
-                        <option key={b._id} value={b.bankName}>{b.bankName}</option>
+                        <option key={b._id} value={b.bankName}>{b.bankName} - Balance Rs. {fmt(b.balance)}</option>
                       ))}
-                      <option value="Cash">Cash</option>
                     </select>
+                    {selectedBank && <p className="text-xs text-slate-400 mt-1">Available balance: Rs. {fmt(selectedBank.balance)}</p>}
                   </Field>
+                  )}
                 </div>
               </div>
               <div className="modal-footer">

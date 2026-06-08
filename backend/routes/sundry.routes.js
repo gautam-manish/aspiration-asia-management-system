@@ -2,6 +2,7 @@ import express from "express";
 import {
   createSundry,
   getAllSundry,
+  getNextSundryCode,
   getSundryById,
   getSundryDropdown,
   updateSundry,
@@ -14,6 +15,7 @@ const router = express.Router();
 // ─────────────────────────────────────────
 
 // Must come before /:id to avoid "dropdown" being parsed as an id
+router.route("/next-code").get(getNextSundryCode);
 router.route("/dropdown").get(getSundryDropdown);
 
 router.route("/").get(getAllSundry).post(createSundry);

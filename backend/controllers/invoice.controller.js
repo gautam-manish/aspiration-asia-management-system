@@ -54,12 +54,16 @@ const daysBetween = (from, to) => {
   return Math.max(0, Math.floor((b - a) / (1000 * 60 * 60 * 24)));
 };
 
-const invoicePaymentStatus = ({ total, paid, balance, dueDate, today }) => {
-  if (total <= 0) return "draft";
-  if (balance <= 0.009) return "paid";
-  if (dueDate && dueDate < today) return "overdue";
-  if (paid > 0) return "partial";
-  return "unpaid";
+const paymentIdentity = (payment = {}) => [
+  String(payment.referenceCode || "").trim().toLowerCase(),
+  String(payment.date || "").trim(),
+  roundMoney(payment.amount),
+].join("|");
+
+const invoicePaymentStatus = ({ total, paid }) => {
+  if (paid <= 0.009) return "unpaid";
+  if (paid + 0.009 < total) return "partial";
+  return "paid";
 };
 
 const attachPaymentSummary = async (invoicesInput) => {
@@ -74,6 +78,12 @@ const attachPaymentSummary = async (invoicesInput) => {
   const invoiceNumbers = invoiceObjects
     .map((invoice) => String(invoice.invoiceNumber || "").toUpperCase())
     .filter(Boolean);
+  const salesRecords = await SalesRecord.find({
+    invoiceNumber: { $in: invoiceNumbers },
+  }).select("invoiceNumber paymentEntries").lean();
+  const salesPaymentsByInvoiceNumber = new Map(
+    salesRecords.map((record) => [String(record.invoiceNumber || "").toUpperCase(), record.paymentEntries || []]),
+  );
 
   const payments = await CustomerPayment.find({
     status: "posted",
@@ -89,6 +99,7 @@ const attachPaymentSummary = async (invoicesInput) => {
   const advanceRefsByInvoiceNumber = new Map();
 
   for (const payment of payments) {
+    if (payment.source === "sales-record") continue;
     const amount = Number(payment.amount) || 0;
     const idKey = payment.invoiceId ? String(payment.invoiceId) : "";
     const numberKey = payment.invoiceNumber ? String(payment.invoiceNumber).toUpperCase() : "";
@@ -115,8 +126,12 @@ const attachPaymentSummary = async (invoicesInput) => {
       const ref = String(advance._id || "");
       return postedAdvanceRefs.has(ref) ? sum : sum + (Number(advance.amount) || 0);
     }, 0);
+    const invoiceAdvanceKeys = new Set((invoice.advancePayments || []).map(paymentIdentity));
+    const salesRecordPaid = (salesPaymentsByInvoiceNumber.get(numberKey) || [])
+      .filter((payment) => !invoiceAdvanceKeys.has(paymentIdentity(payment)))
+      .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
     const total = roundMoney(invoice.total);
-    const paid = roundMoney(postedPaid + legacyAdvancePaid);
+    const paid = roundMoney(postedPaid + legacyAdvancePaid + salesRecordPaid);
     const balance = roundMoney(total - paid);
     const dueDate = toDateOnly(invoice.dueDate) || calculateDueDate(invoice.invoiceDate, invoice.paymentTermsDays);
     const overdueDays = balance > 0 && dueDate && dueDate < today ? daysBetween(dueDate, today) : 0;
@@ -124,18 +139,33 @@ const attachPaymentSummary = async (invoicesInput) => {
     return {
       ...invoice,
       dueDate,
+      salesRecordPaymentEntries: salesPaymentsByInvoiceNumber.get(numberKey) || [],
       paymentSummary: {
         total,
         paid,
         balance: Math.max(0, balance),
         overdueDays,
-        status: invoicePaymentStatus({ total, paid, balance, dueDate, today }),
+        status: invoicePaymentStatus({ total, paid }),
       },
     };
   });
 
   return isArray ? enriched : enriched[0];
 };
+
+async function syncSalesRecordHeaderFromInvoice(invoice) {
+  if (!invoice?.invoiceNumber) return;
+  const invoiceNumber = String(invoice.invoiceNumber || "").trim().toUpperCase();
+  const record = await SalesRecord.findOne({ invoiceNumber });
+  if (!record) return;
+
+  record.clientName = invoice.billTo?.name || record.clientName || "(Unknown)";
+  record.address = invoice.billTo?.address || "";
+  record.phone = invoice.billTo?.mobile || "";
+  record.email = String(invoice.billTo?.email || "").toLowerCase();
+  record.totalAmount = Number(invoice.total) || 0;
+  await record.save();
+}
 
 // ─────────────────────────────────────────
 // @desc    Get Invoice by bookingId (linked booking queryId)
@@ -310,7 +340,7 @@ export const updateInvoice = async (req, res) => {
 
     // Whitelist allowed fields to prevent mass assignment
     const allowedFields = [
-      "customerId", "bookingId", "invoiceDate", "paymentTermsDays", "dueDate", "from", "billTo", "lineItems",
+      "customerId", "bookingId", "clientName", "partyCompanyName", "partyContactPerson", "invoiceDate", "paymentTermsDays", "dueDate", "from", "billTo", "lineItems",
       "subtotal", "discountType", "discountValue", "discount",
       "taxApplicable", "taxPercent", "taxAmount", "totalWithTax",
       "total", "currency", "notes", "terms",
@@ -337,9 +367,10 @@ export const updateInvoice = async (req, res) => {
     }
 
     const invoice = await Invoice.findByIdAndUpdate(
-      req.params.id, { $set: updates }, { returnDocument: 'after', runValidators: true }
+      req.params.id, { $set: updates }, { new: true, runValidators: true }
     );
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
+    await syncSalesRecordHeaderFromInvoice(invoice);
     const enriched = await attachPaymentSummary(invoice);
     await postInvoiceJournal(invoice, req.user);
     res.status(200).json({ success: true, message: "Invoice updated successfully", data: enriched });

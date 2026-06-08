@@ -13,16 +13,16 @@ const COUNTRIES = ["Nepal", "India", "Bhutan"];
 const EMPTY_FORM = {
   type: "debtor", companyName: "", contactPerson: "",
   panVatGst: "", address: "", phone: "", email: "", country: "",
-  partyCode: "", roles: ["customer"], status: "active",
-  openingBalance: "", creditLimit: "", paymentTermsDays: "", notes: "",
+  roles: ["customer"], status: "active",
+  openingBalance: "", notes: "",
 };
 
-function TypeToggle({ value, onChange }) {
+function RoleRadio({ value, onChange }) {
   return (
     <div className="flex gap-3">
       {[
-        { val: "debtor",   icon: "fa-arrow-down", label: "Debtor",   active: "border-brand-600 text-brand-600 bg-blue-50" },
-        { val: "creditor", icon: "fa-arrow-up",   label: "Creditor", active: "border-green-600 text-green-600 bg-green-50" },
+        { val: "customer", icon: "fa-user", label: "Customer (Debtor)", active: "border-brand-600 text-brand-600 bg-blue-50" },
+        { val: "vendor", icon: "fa-truck", label: "Vendor (Creditor)", active: "border-green-600 text-green-600 bg-green-50" },
       ].map(({ val, icon, label, active }) => (
         <button
           key={val}
@@ -45,25 +45,45 @@ function SundryModal({ entry, onClose, onSaved }) {
     ...EMPTY_FORM,
     ...entry,
     roles: Array.isArray(entry.roles) && entry.roles.length
-      ? entry.roles
+      ? [entry.roles[0] === "vendor" ? "vendor" : "customer"]
       : (entry.type === "creditor" ? ["vendor"] : ["customer"]),
   } : { ...EMPTY_FORM });
   const [loading, setLoading] = useState(false);
+  const [codeLoading, setCodeLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const set = (k, v) => {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: undefined }));
   };
-  const toggleRole = (role) => {
-    setForm((f) => {
-      const current = Array.isArray(f.roles) ? f.roles : [];
-      const roles = current.includes(role)
-        ? current.filter((r) => r !== role)
-        : [...current, role];
-      return { ...f, roles };
-    });
+  const setRole = (role) => {
+    setForm((f) => ({
+      ...f,
+      roles: [role],
+      type: role === "vendor" ? "creditor" : "debtor",
+      partyCode: isEdit ? f.partyCode : "",
+    }));
     setErrors((e) => ({ ...e, roles: undefined }));
   };
+
+  useEffect(() => {
+    if (isEdit) return undefined;
+    const role = form.roles?.[0] === "vendor" ? "vendor" : "customer";
+    let cancelled = false;
+    setCodeLoading(true);
+    sundryAPI.getNextCode({ role })
+      .then((res) => {
+        if (cancelled) return;
+        setForm((f) => ({
+          ...f,
+          partyCode: res.data?.data?.partyCode || f.partyCode,
+        }));
+      })
+      .catch(notifyError)
+      .finally(() => {
+        if (!cancelled) setCodeLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [form.roles, isEdit]);
 
   const validate = () => {
     const e = {};
@@ -89,16 +109,10 @@ function SundryModal({ entry, onClose, onSaved }) {
 
     if (!["debtor", "creditor"].includes(form.type))
       e.type = "Pick a type";
-    if (!Array.isArray(form.roles) || form.roles.length === 0)
-      e.roles = "Pick at least one role";
-    if (form.partyCode && !/^[A-Za-z0-9-]{3,30}$/.test(form.partyCode.trim()))
-      e.partyCode = "3-30 letters, numbers, or hyphens";
+    if (!Array.isArray(form.roles) || form.roles.length !== 1)
+      e.roles = "Pick customer or vendor";
     if (Number(form.openingBalance || 0) < 0)
       e.openingBalance = "Cannot be negative";
-    if (Number(form.creditLimit || 0) < 0)
-      e.creditLimit = "Cannot be negative";
-    if (Number(form.paymentTermsDays || 0) < 0)
-      e.paymentTermsDays = "Cannot be negative";
     if ((form.notes || "").length > 500)
       e.notes = "Too long (max 500)";
 
@@ -117,9 +131,9 @@ function SundryModal({ entry, onClose, onSaved }) {
     try {
       const payload = {
         ...form,
+        roles: [(form.roles?.[0] === "vendor") ? "vendor" : "customer"],
+        type: form.roles?.[0] === "vendor" ? "creditor" : "debtor",
         openingBalance: Number(form.openingBalance) || 0,
-        creditLimit: Number(form.creditLimit) || 0,
-        paymentTermsDays: Number(form.paymentTermsDays) || 0,
       };
       if (isEdit) await sundryAPI.update(entry._id, payload);
       else        await sundryAPI.create(payload);
@@ -144,38 +158,15 @@ function SundryModal({ entry, onClose, onSaved }) {
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-4">
             <div>
-              <p className="label mb-2">Accounting Type *</p>
-              <TypeToggle value={form.type} onChange={(v) => set("type", v)} />
-            </div>
-            <div>
-              <p className="label mb-2">Party Roles *</p>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { val: "customer", icon: "fa-user", label: "Customer" },
-                  { val: "vendor", icon: "fa-truck", label: "Vendor" },
-                ].map(({ val, icon, label }) => (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => toggleRole(val)}
-                    className={`flex items-center justify-center gap-2 border-2 rounded-xl py-2.5 text-sm font-semibold transition-all ${
-                      (form.roles || []).includes(val)
-                        ? "border-brand-600 text-brand-600 bg-blue-50"
-                        : "border-slate-200 text-slate-500 bg-white hover:border-slate-300"
-                    }`}
-                  >
-                    <i className={`fa ${icon}`} /> {label}
-                  </button>
-                ))}
-              </div>
+              <p className="label mb-2">Party Type *</p>
+              <RoleRadio value={form.roles?.[0] || "customer"} onChange={setRole} />
               {errors.roles && <p className="text-xs text-red-500 mt-1">{errors.roles}</p>}
             </div>
             <div>
               <p className="label mb-3">Party Information</p>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Party Code">
-                  <input className={`input ${errCls("partyCode")}`} value={form.partyCode || ""} onChange={(e) => set("partyCode", e.target.value.toUpperCase())} placeholder="CUS-001" maxLength={30} />
-                  {errors.partyCode && <p className="text-xs text-red-500 mt-1">{errors.partyCode}</p>}
+                  <input className="input bg-slate-50 font-mono text-brand-600 cursor-not-allowed" value={codeLoading ? "Generating..." : (form.partyCode || "")} readOnly />
                 </Field>
                 <Field label="Status">
                   <select className="input" value={form.status || "active"} onChange={(e) => set("status", e.target.value)}>
@@ -216,14 +207,6 @@ function SundryModal({ entry, onClose, onSaved }) {
                 <Field label="Opening Balance">
                   <input className={`input ${errCls("openingBalance")}`} type="number" min="0" value={form.openingBalance || ""} onChange={(e) => set("openingBalance", e.target.value)} />
                   {errors.openingBalance && <p className="text-xs text-red-500 mt-1">{errors.openingBalance}</p>}
-                </Field>
-                <Field label="Credit Limit">
-                  <input className={`input ${errCls("creditLimit")}`} type="number" min="0" value={form.creditLimit || ""} onChange={(e) => set("creditLimit", e.target.value)} />
-                  {errors.creditLimit && <p className="text-xs text-red-500 mt-1">{errors.creditLimit}</p>}
-                </Field>
-                <Field label="Payment Terms (Days)">
-                  <input className={`input ${errCls("paymentTermsDays")}`} type="number" min="0" value={form.paymentTermsDays || ""} onChange={(e) => set("paymentTermsDays", e.target.value)} />
-                  {errors.paymentTermsDays && <p className="text-xs text-red-500 mt-1">{errors.paymentTermsDays}</p>}
                 </Field>
                 <Field label="Notes" className="col-span-2">
                   <textarea className={`input min-h-[80px] ${errCls("notes")}`} value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} maxLength={500} />
@@ -298,17 +281,19 @@ export default function SundryPage() {
                   <tr>
                     <th>Party</th>
                     <th>Contact Person</th>
-                    <th>Roles</th>
+                    <th>Party Type</th>
                     <th>Address</th>
                     <th>Country</th>
-                    <th>Type</th>
                     <th className="text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {entries.map((s) => (
                     <tr key={s._id}>
-                      <td className="font-medium text-slate-800">{s.companyName || "—"}</td>
+                      <td>
+                        <p className="font-medium text-slate-800">{s.companyName || "-"}</p>
+                        {s.partyCode && <p className="text-xs font-mono text-brand-600">{s.partyCode}</p>}
+                      </td>
                       <td>{s.contactPerson}</td>
                       <td>
                         <div className="flex gap-1 flex-wrap">
@@ -319,12 +304,6 @@ export default function SundryPage() {
                       </td>
                       <td className="text-slate-500">{s.address || "—"}</td>
                       <td className="text-slate-500">{s.country || "—"}</td>
-                      <td>
-                        <span className={s.type === "debtor" ? "badge badge-blue" : "badge badge-green"}>
-                          <i className={`fa fa-arrow-${s.type === "debtor" ? "down" : "up"} mr-1`} />
-                          {s.type === "debtor" ? "Debtor" : "Creditor"}
-                        </span>
-                      </td>
                       <td>
                         <div className="flex justify-end gap-1">
                           <button onClick={() => setModal(s)} className="btn-ghost text-xs py-1 px-2">

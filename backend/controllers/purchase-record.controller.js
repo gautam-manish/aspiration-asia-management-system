@@ -1,6 +1,10 @@
 // Controller/purchaserecordController.js
 
 import PurchaseRecord from "../models/purchase-record.model.js";
+import BankAccount from "../models/bank-account.model.js";
+import CustomerPayment from "../models/customer-payment.model.js";
+import VendorPayment from "../models/vendor-payment.model.js";
+import OfficeExpense from "../models/office-expense.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
 import {
   syncPurchaseRecordCredit,
@@ -18,6 +22,77 @@ const fmt = (n = 0) =>
 
 const calcClosing = (opening = 0, dr = 0, cr = 0) =>
   Number(opening || 0) + Number(dr || 0) - Number(cr || 0);
+
+async function getBankAvailableBalance(bankName) {
+  const cleanName = String(bankName || "").trim();
+  if (!cleanName) return null;
+
+  const bank = await BankAccount.findOne({ bankName: cleanName }).lean();
+  if (!bank) return null;
+
+  const [purchaseDebitAgg, customerPaymentAgg, vendorPaymentAgg, officeExpenseAgg] = await Promise.all([
+    PurchaseRecord.aggregate([
+      { $unwind: "$transactions" },
+      { $match: { "transactions.type": "dr", "transactions.bank": cleanName } },
+      { $group: { _id: null, total: { $sum: "$transactions.amount" } } },
+    ]),
+    CustomerPayment.aggregate([
+      { $match: { status: "posted", bankAccountId: bank._id } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]),
+    VendorPayment.aggregate([
+      { $match: { status: "posted", bankAccountId: bank._id } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]),
+    OfficeExpense.aggregate([
+      { $match: { status: "posted", bankAccountId: bank._id } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]),
+  ]);
+
+  const manualCredit = (bank.transactions || [])
+    .filter((t) => t.type === "cr")
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const manualDebit = (bank.transactions || [])
+    .filter((t) => t.type === "dr")
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+  const purchaseDebit = Number(purchaseDebitAgg[0]?.total || 0);
+  const customerPaymentCredit = Number(customerPaymentAgg[0]?.total || 0);
+  const vendorPaymentDebit = Number(vendorPaymentAgg[0]?.total || 0);
+  const officeExpenseDebit = Number(officeExpenseAgg[0]?.total || 0);
+
+  return Number(bank.openingBalance || 0)
+    + manualCredit
+    + customerPaymentCredit
+    - purchaseDebit
+    - manualDebit
+    - vendorPaymentDebit
+    - officeExpenseDebit;
+}
+
+async function validatePurchaseTransactionBank(transaction) {
+  if (transaction.type !== "dr") {
+    transaction.bank = "";
+    return null;
+  }
+
+  if (!String(transaction.bank || "").trim()) {
+    return "Bank account is required for debit entries.";
+  }
+
+  const balance = await getBankAvailableBalance(transaction.bank);
+  if (balance == null) {
+    return "Selected bank account was not found.";
+  }
+
+  const amount = Number(transaction.amount || 0);
+  if (amount > balance) {
+    return `Amount exceeds selected bank balance. Available balance is Rs. ${fmt(balance)}.`;
+  }
+
+  return null;
+}
 
 // ─────────────────────────────────────────────
 // GET ALL PURCHASE RECORDS
@@ -177,6 +252,14 @@ export const createOrAddToPurchaseRecord = async (req, res) => {
       });
     }
 
+    const bankError = await validatePurchaseTransactionBank(transaction);
+    if (bankError) {
+      return res.status(400).json({
+        success: false,
+        message: bankError,
+      });
+    }
+
     // ── Find Existing ───────────────────────
     let record = await PurchaseRecord.findOne({
       debtorName: debtorName.trim(),
@@ -264,6 +347,14 @@ export const addTransaction = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Transaction amount must be greater than zero.",
+      });
+    }
+
+    const bankError = await validatePurchaseTransactionBank(transaction);
+    if (bankError) {
+      return res.status(400).json({
+        success: false,
+        message: bankError,
       });
     }
 

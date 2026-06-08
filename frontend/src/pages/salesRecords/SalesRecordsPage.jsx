@@ -102,6 +102,7 @@ export function SlipField({ slip, onChange }) {
 }
 
 function SalesModal({ onClose, onSaved }) {
+  const qc = useQueryClient();
   const [form, setForm]     = useState({ invoiceNumber: "", clientName: "", address: "", phone: "", email: "", totalAmount: "" });
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -183,6 +184,8 @@ function SalesModal({ onClose, onSaved }) {
         await salesRecordAPI.create({ ...form, paymentEntries: entries });
         toast.success("Sales record created ✓");
       }
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoice"] });
       onSaved();
     } catch (err) {
       notifyError(err);

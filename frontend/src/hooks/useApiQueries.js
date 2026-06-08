@@ -255,9 +255,12 @@ export function useInvoiceMutations() {
     create: useMutation({ mutationFn: (data) => invoiceAPI.create(data), onSuccess: invalidate }),
     update: useMutation({
       mutationFn: ({ id, data }) => invoiceAPI.update(id, data),
-      onSuccess: (_, { id }) => {
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["invoice", id], updated);
         invalidate();
         qc.invalidateQueries({ queryKey: ["invoice", id] });
+        qc.invalidateQueries({ queryKey: ["sales-records"] });
       },
     }),
     remove: useMutation({ mutationFn: (id) => invoiceAPI.remove(id), onSuccess: invalidate }),
@@ -391,6 +394,8 @@ export function useSalesRecordMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["sales-records"] });
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["invoice"] });
     qc.invalidateQueries({ queryKey: ["customer-payments"] });
     qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
     qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });

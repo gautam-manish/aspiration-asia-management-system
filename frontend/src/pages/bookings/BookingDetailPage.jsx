@@ -150,6 +150,9 @@ function PrintableItinerary({ booking, printRef }) {
           <div className="pi-summary-row">
             <strong>Meal Plan:</strong> {booking.mealPlan || "—"}
           </div>
+          <div className="pi-summary-row">
+            <strong>Client Name:</strong> {booking.clientName || "—"}
+          </div>
         </div>
 
         {/* DETAIL ITINERARY divider */}
@@ -271,8 +274,8 @@ function ItineraryModal({ booking, onClose, onSaved }) {
             <InfoPill label="Departure"      value={formatDate(booking.departureDate)} />
             <InfoPill label="No. of Pax"     value={paxParts} />
             <InfoPill label="Hotel Category" value={booking.hotelCategory} />
-            <InfoPill label="Rooms"          value={booking.rooms} />
             <InfoPill label="Meal Plan"      value={booking.mealPlan} />
+            <InfoPill label="Client Name"    value={booking.clientName} />
           </div>
 
           <div className="flex items-center justify-between border-b border-slate-200 pb-2">
@@ -424,6 +427,7 @@ function ViewItineraryModal({ booking, onClose, onEdit }) {
               <InfoPill label="Hotel Category" value={booking.hotelCategory} />
               <InfoPill label="Rooms"          value={booking.rooms} />
               <InfoPill label="Meal Plan"      value={booking.mealPlan} />
+              <InfoPill label="Client Name"    value={booking.clientName} />
             </div>
 
             <div className="border-b border-slate-200 pb-2">
@@ -603,7 +607,9 @@ export default function BookingDetailPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
               <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Client Information</h3>
-              <Row label="Client / Agent" value={booking.clientName} />
+              <Row label="Sundry Debtor"  value={booking.companyName} />
+              <Row label="Contact Person" value={booking.contactPerson} />
+              <Row label="Client Name"    value={booking.clientName} />
               <Row label="Email"          value={booking.email} />
               <Row label="Mobile"         value={booking.mobile} />
               <Row label="Address"        value={booking.address} />

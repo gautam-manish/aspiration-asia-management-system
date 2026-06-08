@@ -9,7 +9,7 @@ import { useBookingsPaginated, useBookingMutations, useSundryDropdown } from "..
 import toast from "react-hot-toast";
 
 const EMPTY_FORM = {
-  queryId:"", customerId:"", companyName:"", clientName:"", email:"", mobile:"", address:"",
+  queryId:"", customerId:"", companyName:"", contactPerson:"", clientName:"", email:"", mobile:"", address:"",
   destination:"Nepal", pickupPoint:"", dropPoint:"",
   arrivalDate:"", departureDate:"", noOfDays:"",
   adults:0, childEB:0, childNoEB:0, childU5:0, rooms:0,
@@ -36,7 +36,7 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
   const wasCancelled = isEdit && booking?.status === "cancelled";
 
   // Cached party dropdown - fetched once, reused on every modal open.
-  const { data: parties = [] } = useSundryDropdown();
+  const { data: parties = [] } = useSundryDropdown({ role: "customer" });
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -54,8 +54,8 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
     setForm((f) => ({
       ...f,
       customerId: party._id || "",
-      clientName: party.contactPerson || "",
       companyName: party.companyName || "",
+      contactPerson: party.contactPerson || "",
       email: party.email || "",
       mobile: party.phone || "",
       address: party.address || "",
@@ -78,6 +78,14 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.customerId) {
+      toast.error("Select a sundry debtor");
+      return;
+    }
+    if (!form.clientName?.trim()) {
+      toast.error("Client name is required");
+      return;
+    }
     setLoading(true);
     try {
       if (isEdit) await bookingAPI.update(booking._id, form);
@@ -107,15 +115,15 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Client / Agent Dropdown */}
-              <Field label="Client / Agent Name" required>
+              {/* Sundry Debtor Dropdown */}
+              <Field label="Sundry Debtor" required>
                 <div className="relative">
                   <div
                     className="input cursor-pointer flex items-center justify-between"
                     onClick={() => setDropdownOpen(!dropdownOpen)}
                   >
-                    <span className={form.clientName ? "text-slate-800" : "text-slate-400"}>
-                      {form.clientName || "Select client / agent…"}
+                    <span className={form.companyName ? "text-slate-800" : "text-slate-400"}>
+                      {form.companyName || "Select sundry debtor..."}
                     </span>
                     <i className={`fa fa-chevron-${dropdownOpen ? "up" : "down"} text-xs text-slate-400`} />
                   </div>
@@ -126,14 +134,14 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
                           autoFocus
                           type="text"
                           className="input text-sm"
-                          placeholder="Search parties..."
+                          placeholder="Search sundry debtors..."
                           value={clientSearch}
                           onChange={(e) => setClientSearch(e.target.value)}
                           onClick={(e) => e.stopPropagation()}
                         />
                       </div>
                       {filteredParties.length === 0 ? (
-                        <div className="p-3 text-sm text-slate-400 text-center">No parties found</div>
+                        <div className="p-3 text-sm text-slate-400 text-center">No sundry debtors found</div>
                       ) : (
                         filteredParties.map((c) => (
                           <button
@@ -142,10 +150,8 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
                             className="w-full text-left px-3 py-2 hover:bg-brand-50 transition-colors border-b border-slate-50 last:border-b-0"
                             onClick={() => handlePartySelect(c)}
                           >
-                            <p className="text-sm font-medium text-slate-800">{c.contactPerson}</p>
-                            {c.companyName && (
-                              <p className="text-xs text-slate-400">{c.companyName}</p>
-                            )}
+                            <p className="text-sm font-medium text-slate-800">{c.companyName || c.contactPerson}</p>
+                            {c.contactPerson && <p className="text-xs text-slate-400">{c.contactPerson}</p>}
                             {c.partyCode && <p className="text-xs text-slate-400 font-mono">{c.partyCode}</p>}
                           </button>
                         ))
@@ -154,8 +160,11 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
                   )}
                 </div>
               </Field>
-              <Field label="Company Name">
-                <input className="input" value={form.companyName} onChange={(e) => set("companyName", e.target.value)} placeholder="Company name" />
+              <Field label="Contact Person">
+                <input className="input" value={form.contactPerson || ""} onChange={(e) => set("contactPerson", e.target.value)} placeholder="Contact person" />
+              </Field>
+              <Field label="Client Name" required>
+                <input className="input" value={form.clientName} onChange={(e) => set("clientName", e.target.value)} placeholder="Enter client name" required />
               </Field>
               <Field label="Email" required>
                 <input className="input" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} required />
@@ -352,7 +361,7 @@ export default function BookingsPage() {
                 <thead>
                   <tr>
                     <th>Booking ID</th>
-                    <th>Client / Agent</th>
+                    <th>Client</th>
                     <th>Destination</th>
                     <th>Arrival</th>
                     <th>Departure</th>
@@ -367,7 +376,7 @@ export default function BookingsPage() {
                       <td className="font-mono text-xs text-brand-600 font-medium">{b.queryId}</td>
                       <td>
                         <p className="font-medium text-slate-800">{b.clientName}</p>
-                        <p className="text-xs text-slate-400">{b.email}</p>
+                        <p className="text-xs text-slate-400">{b.companyName || b.contactPerson || b.email}</p>
                       </td>
                       <td><span className="badge badge-blue">{b.destination}</span></td>
                       <td className="text-slate-600 text-xs">{formatDate(b.arrivalDate)}</td>

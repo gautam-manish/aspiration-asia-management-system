@@ -28,9 +28,14 @@ const querySchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    contactPerson: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     clientName: {
       type: String,
-      required: [true, "Client / Agent name is required"],
+      required: [true, "Client name is required"],
       trim: true,
     },
     email: {

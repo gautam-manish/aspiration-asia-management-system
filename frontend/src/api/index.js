@@ -156,6 +156,7 @@ export const emailAPI = {
 export const sundryAPI = {
   getAll:      (params) => api.get("/sundry", { params }),
   getById:     (id)     => api.get(`/sundry/${id}`),
+  getNextCode: (params) => api.get("/sundry/next-code", { params }),
   getDropdown: (params) => api.get("/sundry/dropdown", { params }),
   create:      (data)   => api.post("/sundry", data),
   update:      (id, data) => api.put(`/sundry/${id}`, data),

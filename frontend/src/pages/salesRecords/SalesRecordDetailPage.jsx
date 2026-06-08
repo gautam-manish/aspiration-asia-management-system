@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { salesRecordAPI } from "../../api";
-import { formatDate, notifyError } from "../../utils/helpers";
+import { formatDate, notifyError, numberToWords } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
 import { useSalesRecord } from "../../hooks/useApiQueries";
 import { SlipField } from "./SalesRecordsPage";
+import { ReceiptPrint } from "../cashReceipts/CashReceiptDetailPage";
 import toast from "react-hot-toast";
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -22,11 +23,13 @@ function statusBadge(r) {
 export default function SalesRecordDetailPage() {
   const { id }   = useParams();
   const navigate = useNavigate();
+  const printRef = useRef(null);
 
   const [record,  setRecord]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [addingEntry, setAddingEntry] = useState(false);
+  const [receiptToPrint, setReceiptToPrint] = useState(null);
   const [form,    setForm]    = useState({});
   const [entries, setEntries] = useState([]);
   const [saving,  setSaving]  = useState(false);
@@ -60,6 +63,45 @@ export default function SalesRecordDetailPage() {
   const received    = entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const outstanding = (Number(form.totalAmount) || 0) - received;
 
+  const buildReceiptFromEntry = (entry, index) => ({
+    registrationNumber: entry.referenceCode || `${record.invoiceNumber}-${index + 1}`,
+    date: entry.date || new Date().toISOString().slice(0, 10),
+    createdAt: record.createdAt,
+    name: record.clientName,
+    amount: Number(entry.amount) || 0,
+    amountInWords: numberToWords(entry.amount),
+    cashChequeNo: entry.referenceCode || "",
+    bank: "",
+    paymentType: `Invoice ${record.invoiceNumber}`,
+    invoiceNumber: record.invoiceNumber,
+    email: record.email || "",
+    phone: record.phone || "",
+    address: record.address || "",
+  });
+
+  const printReceipt = (receipt) => {
+    setReceiptToPrint(receipt);
+    setTimeout(() => {
+      const printContents = printRef.current?.innerHTML;
+      if (!printContents) {
+        toast.error("Receipt preview is not ready yet");
+        return;
+      }
+      const win = window.open("", "_blank", "width=800,height=600");
+      win.document.write(`<!DOCTYPE html><html><head>
+        <title>Receipt - ${receipt.registrationNumber}</title>
+        <style>
+          @page { size: A4; margin: 15mm; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
+          body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        </style>
+      </head><body>${printContents}</body></html>`);
+      win.document.close();
+      win.focus();
+      setTimeout(() => { win.print(); win.close(); }, 400);
+    }, 0);
+  };
+
   const handleUpdate = async (ev) => {
     ev.preventDefault();
     if (!form.clientName?.trim()) { toast.error("Client name required"); return; }
@@ -69,6 +111,8 @@ export default function SalesRecordDetailPage() {
       toast.success("Record updated ✓");
       setEditing(false);
       loadRecord();
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoice"] });
     } catch (err) {
       notifyError(err);
     } finally {
@@ -159,7 +203,7 @@ export default function SalesRecordDetailPage() {
         ) : (
           <div className="table-wrapper">
             <table className="table">
-              <thead><tr><th>#</th><th>Reference Code</th><th>Amount</th><th>Date</th><th>Slip</th></tr></thead>
+              <thead><tr><th>#</th><th>Reference Code</th><th>Amount</th><th>Date</th><th>Slip</th><th>Cash Receipt</th></tr></thead>
               <tbody>
                 {(record.paymentEntries || []).map((e, i) => (
                   <tr key={e._id || i}>
@@ -174,6 +218,17 @@ export default function SalesRecordDetailPage() {
                           {e.slip.fileName || "View"}
                         </a>
                       ) : <span className="text-slate-400">—</span>}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => printReceipt(buildReceiptFromEntry(e, i))}
+                        disabled={!Number(e.amount)}
+                        className="btn-secondary text-xs py-1 px-2"
+                        title="Generate printable cash receipt for this payment entry"
+                      >
+                        <i className="fa fa-receipt" /> Generate
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -260,6 +315,12 @@ export default function SalesRecordDetailPage() {
           </div>
         </div>
       )}
+
+      <div style={{ position: "absolute", left: -9999, top: 0, visibility: "hidden" }}>
+        <div ref={printRef}>
+          {receiptToPrint && <ReceiptPrint r={receiptToPrint} />}
+        </div>
+      </div>
     </div>
   );
 }
@@ -269,6 +330,7 @@ export default function SalesRecordDetailPage() {
 // any of its other fields. Reuses the SlipField uploader from SalesRecordsPage
 // so files are still subject to the 5 MB limit + image compression.
 function AddPaymentEntryModal({ record, onClose, onSaved }) {
+  const qc = useQueryClient();
   const [referenceCode, setReferenceCode] = useState("");
   const [amount, setAmount]               = useState("");
   const [date, setDate]                   = useState(new Date().toISOString().slice(0, 10));
@@ -307,6 +369,8 @@ function AddPaymentEntryModal({ record, onClose, onSaved }) {
         paymentEntries: [...existing, newEntry],
       });
       toast.success("Payment entry added ✓");
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoice"] });
       onSaved();
     } catch (err) {
       notifyError(err);

@@ -60,6 +60,9 @@ const invoiceSchema = new mongoose.Schema(
     },
 
     bookingId: { type: String, trim: true, default: "" },
+    clientName: { type: String, trim: true, default: "" },
+    partyCompanyName: { type: String, trim: true, default: "" },
+    partyContactPerson: { type: String, trim: true, default: "" },
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Sundry",

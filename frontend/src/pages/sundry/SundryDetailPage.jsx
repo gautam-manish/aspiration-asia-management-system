@@ -9,12 +9,12 @@ import toast from "react-hot-toast";
 
 const COUNTRIES = ["Nepal", "India", "Bhutan"];
 
-function TypeToggle({ value, onChange }) {
+function RoleRadio({ value, onChange }) {
   return (
     <div className="flex gap-3">
       {[
-        { val: "debtor",   icon: "fa-arrow-down", label: "Debtor",   active: "border-brand-600 text-brand-600 bg-blue-50" },
-        { val: "creditor", icon: "fa-arrow-up",   label: "Creditor", active: "border-green-600 text-green-600 bg-green-50" },
+        { val: "customer", icon: "fa-user", label: "Customer (Debtor)", active: "border-brand-600 text-brand-600 bg-blue-50" },
+        { val: "vendor", icon: "fa-truck", label: "Vendor (Creditor)", active: "border-green-600 text-green-600 bg-green-50" },
       ].map(({ val, icon, label, active }) => (
         <button key={val} type="button" onClick={() => onChange(val)}
           className={`flex-1 flex items-center justify-center gap-2 border-2 rounded-xl py-2.5 text-sm font-semibold transition-all ${
@@ -62,13 +62,23 @@ export default function SundryDetailPage() {
   useEffect(() => { if (entryError) notifyError(entryError); }, [entryError]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setRole = (role) => setForm((f) => ({
+    ...f,
+    roles: [role],
+    type: role === "vendor" ? "creditor" : "debtor",
+  }));
 
   const handleUpdate = async (e) => {
     e.preventDefault();
     if (!form.contactPerson?.trim()) { toast.error("Contact person is required"); return; }
     setSaving(true);
     try {
-      const { data } = await sundryAPI.update(id, form);
+      const role = form.roles?.[0] === "vendor" ? "vendor" : "customer";
+      const { data } = await sundryAPI.update(id, {
+        ...form,
+        roles: [role],
+        type: role === "vendor" ? "creditor" : "debtor",
+      });
       setEntry(data.data);
       setEditing(false);
       toast.success("Entry updated ✓");
@@ -84,7 +94,7 @@ export default function SundryDetailPage() {
   if (loading) return <PageLoader />;
   if (!entry)  return <div className="text-center py-20 text-slate-400">Entry not found</div>;
 
-  const isDebtor = entry.type === "debtor";
+  const role = entry.roles?.[0] === "vendor" ? "vendor" : "customer";
 
   return (
     <div>
@@ -100,9 +110,9 @@ export default function SundryDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className={isDebtor ? "badge badge-blue" : "badge badge-green"}>
-            <i className={`fa fa-arrow-${isDebtor ? "down" : "up"} mr-1`} />
-            {isDebtor ? "Debtor" : "Creditor"}
+          <span className={role === "vendor" ? "badge badge-green" : "badge badge-blue"}>
+            <i className={`fa ${role === "vendor" ? "fa-truck" : "fa-user"} mr-1`} />
+            {role === "vendor" ? "Vendor (Creditor)" : "Customer (Debtor)"}
           </span>
           <button onClick={() => setEditing(true)} className="btn-secondary">
             <i className="fa fa-edit" /> Edit Entry
@@ -127,12 +137,9 @@ export default function SundryDetailPage() {
           <div className="card-body">
             <Row label="Contact Number" value={entry.phone} />
             <Row label="Email"          value={entry.email} />
-            <Row label="Type"           value={isDebtor ? "Debtor" : "Creditor"} />
-            <Row label="Roles"          value={(entry.roles?.length ? entry.roles : [isDebtor ? "customer" : "vendor"]).join(", ")} />
+            <Row label="Party Type"     value={role === "vendor" ? "Vendor (Creditor)" : "Customer (Debtor)"} />
             <Row label="Status"         value={entry.status || "active"} />
             <Row label="Opening Balance" value={fmtMoney(entry.openingBalance)} />
-            <Row label="Credit Limit"    value={fmtMoney(entry.creditLimit)} />
-            <Row label="Payment Terms"   value={`${Number(entry.paymentTermsDays || 0)} days`} />
             <Row label="Notes"           value={entry.notes} />
           </div>
         </div>
@@ -149,8 +156,8 @@ export default function SundryDetailPage() {
             <form onSubmit={handleUpdate}>
               <div className="modal-body space-y-4">
                 <div>
-                  <p className="label mb-2">Entry Type *</p>
-                  <TypeToggle value={form.type} onChange={(v) => set("type", v)} />
+                  <p className="label mb-2">Party Type *</p>
+                  <RoleRadio value={form.roles?.[0] === "vendor" ? "vendor" : "customer"} onChange={setRole} />
                 </div>
                 <div>
                   <p className="label mb-3">Company Information</p>

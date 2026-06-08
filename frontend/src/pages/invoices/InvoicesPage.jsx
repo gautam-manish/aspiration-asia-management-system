@@ -5,7 +5,7 @@ import { invoiceAPI, bookingAPI } from "../../api";
 import { todayString, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useInvoicesPaginated, useInvoiceMutations, useSundryDropdown } from "../../hooks/useApiQueries";
+import { useInvoicesPaginated, useInvoiceMutations } from "../../hooks/useApiQueries";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 
@@ -21,17 +21,21 @@ const addDays = (date, days) => {
 const paymentStatusClass = {
   paid: "badge-green",
   partial: "badge-blue",
-  overdue: "badge-red",
   unpaid: "badge-yellow",
-  draft: "badge-gray",
 };
 
 const paymentStatusLabel = {
   paid: "Paid",
-  partial: "Partial",
-  overdue: "Overdue",
+  partial: "Partially Paid",
   unpaid: "Unpaid",
-  draft: "Draft",
+};
+
+const normalizeInvoiceListStatus = (summary = {}, total = 0) => {
+  const paid = Number(summary.paid) || 0;
+  const invoiceTotal = Number(total || summary.total || 0);
+  if (paid <= 0.009) return "unpaid";
+  if (paid + 0.009 < invoiceTotal) return "partial";
+  return "paid";
 };
 
 export function InvoiceModal({ invoice, onClose, onSaved }) {
@@ -45,6 +49,9 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
         paymentTermsDays: invoice.paymentTermsDays ?? 0,
         dueDate: invoice.dueDate || addDays(invoice.invoiceDate || todayString(), invoice.paymentTermsDays ?? 0),
         bookingId:     invoice.bookingId     || "",
+        clientName:    invoice.clientName    || "",
+        partyCompanyName: invoice.partyCompanyName || invoice.billTo?.name || "",
+        partyContactPerson: invoice.partyContactPerson || invoice.billTo?.name || "",
         customerId:    invoice.customerId    || "",
         from: {
           name:     invoice.from?.name     || "Aspiration AISA",
@@ -83,6 +90,9 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       paymentTermsDays: 0,
       dueDate: todayString(),
       bookingId: "",
+      clientName: "",
+      partyCompanyName: "",
+      partyContactPerson: "",
       customerId: "",
       from: {
         name: "Aspiration AISA",
@@ -104,9 +114,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
   const [form, setForm] = useState(buildInitial());
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
-  const [partyOpen, setPartyOpen] = useState(false);
-  const [partySearch, setPartySearch] = useState("");
-  const { data: parties = [] } = useSundryDropdown();
+  const [partyNameMode, setPartyNameMode] = useState("company");
 
   // Fetch a unique server-generated invoice number when creating a new invoice
   useEffect(() => {
@@ -119,29 +127,16 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setFrom  = (k, v) => setForm((f) => ({ ...f, from:   { ...f.from,   [k]: v } }));
   const setBill  = (k, v) => setForm((f) => ({ ...f, billTo: { ...f.billTo, [k]: v } }));
-  const setInvoiceDate = (value) => setForm((f) => ({ ...f, invoiceDate: value, dueDate: addDays(value, f.paymentTermsDays) }));
-  const setPaymentTerms = (value) => setForm((f) => ({ ...f, paymentTermsDays: value, dueDate: addDays(f.invoiceDate, value) }));
+  const setInvoiceDate = (value) => setForm((f) => ({ ...f, invoiceDate: value, dueDate: value }));
 
-  const filteredParties = parties.filter((p) => {
-    const q = partySearch.trim().toLowerCase();
-    if (!q) return true;
-    return [p.contactPerson, p.companyName, p.partyCode, p.email, p.phone]
-      .some((v) => String(v || "").toLowerCase().includes(q));
-  });
-
-  const selectParty = (party) => {
-    setForm((f) => ({
-      ...f,
-      customerId: party._id || "",
-      billTo: {
-        name: party.contactPerson || f.billTo.name,
-        email: party.email || f.billTo.email,
-        address: party.address || f.billTo.address,
-        mobile: party.phone || f.billTo.mobile,
-      },
-    }));
-    setPartySearch("");
-    setPartyOpen(false);
+  const changePartyNameMode = (mode) => {
+    setPartyNameMode(mode);
+    setForm((f) => {
+      const partyName = mode === "contact"
+        ? (f.partyContactPerson || f.partyCompanyName || "")
+        : (f.partyCompanyName || f.partyContactPerson || "");
+      return { ...f, billTo: { ...f.billTo, name: partyName || f.billTo.name } };
+    });
   };
 
   const lookupBooking = async () => {
@@ -151,15 +146,25 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
     try {
       const { data } = await bookingAPI.getByQueryId(id);
       const b = data.data;
+      const companyName = b.companyName || "";
+      const contactPerson = b.contactPerson || "";
+      if (!companyName && !contactPerson) {
+        toast.error("Booking has no linked sundry party name");
+      }
       setForm((f) => ({
         ...f,
         bookingId: b.queryId || id,
         customerId: b.customerId || f.customerId || "",
+        clientName: b.clientName || f.clientName || "",
+        partyCompanyName: companyName,
+        partyContactPerson: contactPerson,
         billTo: {
-          name:    b.clientName || f.billTo.name,
-          email:   b.email      || f.billTo.email,
-          address: b.address    || f.billTo.address,
-          mobile:  b.mobile     || f.billTo.mobile,
+          name: partyNameMode === "contact"
+            ? (contactPerson || companyName || "")
+            : (companyName || contactPerson || ""),
+          email:   b.email || f.billTo.email || "",
+          address: b.address || f.billTo.address || "",
+          mobile:  b.mobile || f.billTo.mobile || "",
         },
       }));
       toast.success(`Booking ${b.queryId} loaded`);
@@ -206,16 +211,33 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.bookingId?.trim()) {
+      toast.error("Booking ID is required");
+      return;
+    }
+    if (!form.billTo.name?.trim()) {
+      toast.error("Fetch booking to set party name");
+      return;
+    }
     setLoading(true);
     try {
+      const payload = {
+        ...form,
+        paymentTermsDays: 0,
+        dueDate: form.invoiceDate,
+        terms: "",
+      };
+      let saved;
       if (isEdit) {
-        await invoiceAPI.update(invoice._id, form);
+        const { data } = await invoiceAPI.update(invoice._id, payload);
+        saved = data?.data;
         toast.success("Invoice updated");
       } else {
-        await invoiceAPI.create(form);
+        const { data } = await invoiceAPI.create(payload);
+        saved = data?.data;
         toast.success("Invoice created");
       }
-      onSaved();
+      onSaved(saved);
     } catch (err) {
       notifyError(err);
     } finally {
@@ -233,7 +255,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-5">
             {/* Header row */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Field label="Invoice Number" required>
                 <input
                   className="input bg-slate-50 font-mono text-brand-600 cursor-not-allowed"
@@ -244,18 +266,6 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
               </Field>
               <Field label="Invoice Date" required>
                 <input className="input" type="date" value={form.invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required />
-              </Field>
-              <Field label="Terms (Days)">
-                <input
-                  className="input"
-                  type="number"
-                  min="0"
-                  value={form.paymentTermsDays}
-                  onChange={(e) => setPaymentTerms(e.target.value)}
-                />
-              </Field>
-              <Field label="Due Date">
-                <input className="input" type="date" value={form.dueDate} onChange={(e) => setField("dueDate", e.target.value)} />
               </Field>
               <Field label="Currency" required>
                 <select
@@ -293,6 +303,9 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
                   </button>
                 </div>
               </Field>
+              <Field label="Client Name">
+                <input className="input bg-slate-50" value={form.clientName || ""} readOnly placeholder="Fetch from booking" />
+              </Field>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -308,51 +321,34 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
               {/* Bill To */}
               <div className="space-y-3">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Bill To</p>
-                <Field label="Customer / Party">
-                  <div className="relative">
-                    <div
-                      className="input cursor-pointer flex items-center justify-between"
-                      onClick={() => setPartyOpen((v) => !v)}
-                    >
-                      <span className={form.billTo.name ? "text-slate-800" : "text-slate-400"}>
-                        {form.billTo.name || "Select customer..."}
-                      </span>
-                      <i className={`fa fa-chevron-${partyOpen ? "up" : "down"} text-xs text-slate-400`} />
-                    </div>
-                    {partyOpen && (
-                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-auto">
-                        <div className="sticky top-0 bg-white border-b border-slate-100 p-2">
-                          <input
-                            autoFocus
-                            type="text"
-                            className="input text-sm"
-                            placeholder="Search parties..."
-                            value={partySearch}
-                            onChange={(e) => setPartySearch(e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </div>
-                        {filteredParties.length === 0 ? (
-                          <div className="p-3 text-sm text-slate-400 text-center">No parties found</div>
-                        ) : (
-                          filteredParties.map((p) => (
-                            <button
-                              key={p._id}
-                              type="button"
-                              className="w-full text-left px-3 py-2 hover:bg-brand-50 transition-colors border-b border-slate-50 last:border-b-0"
-                              onClick={() => selectParty(p)}
-                            >
-                              <p className="text-sm font-medium text-slate-800">{p.contactPerson}</p>
-                              {p.companyName && <p className="text-xs text-slate-400">{p.companyName}</p>}
-                              {p.partyCode && <p className="text-xs text-slate-400 font-mono">{p.partyCode}</p>}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
+                <Field label="Party Name">
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    {[
+                      ["company", "Company Name"],
+                      ["contact", "Contact Person"],
+                    ].map(([value, label]) => (
+                      <label key={value} className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-xs font-medium cursor-pointer ${
+                        partyNameMode === value ? "border-brand-500 bg-brand-50 text-brand-700" : "border-slate-200 text-slate-500"
+                      }`}>
+                        <input
+                          type="radio"
+                          name="partyNameMode"
+                          value={value}
+                          checked={partyNameMode === value}
+                          onChange={() => changePartyNameMode(value)}
+                        />
+                        {label}
+                      </label>
+                    ))}
                   </div>
+                  <input
+                    className="input bg-slate-50"
+                    value={form.billTo.name || ""}
+                    readOnly
+                    placeholder="Fetch booking, then choose company/contact"
+                  />
                 </Field>
-                {[["name","Client Name"],["email","Email"],["address","Address"],["mobile","Mobile"]].map(([k,l]) => (
+                {[["email","Email"],["address","Address"],["mobile","Mobile"]].map(([k,l]) => (
                   <Field key={k} label={l} required={k==="name"}>
                     <input className="input" value={form.billTo[k]} onChange={(e) => setBill(k, e.target.value)} required={k==="name"} />
                   </Field>
@@ -503,9 +499,6 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
               <Field label="Notes">
                 <textarea className="input" rows={2} value={form.notes} onChange={(e) => setField("notes", e.target.value)} placeholder="Thank you for your business!" />
               </Field>
-              <Field label="Terms & Conditions">
-                <textarea className="input" rows={2} value={form.terms} onChange={(e) => setField("terms", e.target.value)} placeholder="Payment due within 30 days" />
-              </Field>
             </div>
           </div>
           <div className="modal-footer">
@@ -607,12 +600,9 @@ export default function InvoicesPage() {
                         </p>
                       </td>
                       <td>
-                        <span className={paymentStatusClass[inv.paymentSummary?.status] || "badge-gray"}>
-                          {paymentStatusLabel[inv.paymentSummary?.status] || "Unknown"}
+                        <span className={paymentStatusClass[normalizeInvoiceListStatus(inv.paymentSummary, inv.total)]}>
+                          {paymentStatusLabel[normalizeInvoiceListStatus(inv.paymentSummary, inv.total)]}
                         </span>
-                        {inv.paymentSummary?.overdueDays > 0 && (
-                          <p className="text-xs text-red-500 mt-1">{inv.paymentSummary.overdueDays} days late</p>
-                        )}
                       </td>
                       <td>
                         <div className="flex gap-1">

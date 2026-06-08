@@ -7,7 +7,7 @@ import { useCashReceipt } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 // ─── Exact original receipt HTML template ────────────────────────────────────
-function ReceiptPrint({ r }) {
+export function ReceiptPrint({ r }) {
   const date = r.date
     ? new Date(r.date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })
     : new Date(r.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });

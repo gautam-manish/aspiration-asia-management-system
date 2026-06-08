@@ -82,11 +82,11 @@ function AddAdvanceModal({ invoice, onClose, onSaved }) {
     if (!Number.isFinite(num) || num <= 0) { toast.error("Amount must be greater than zero"); return; }
     setSaving(true);
     try {
-      await invoiceAPI.addAdvancePayment(invoice._id, {
+      const { data } = await invoiceAPI.addAdvancePayment(invoice._id, {
         referenceCode, amount: num, date, slip,
       });
       toast.success("Advance payment recorded ✓");
-      onSaved();
+      onSaved(data?.data);
     } catch (err) {
       notifyError(err);
     } finally {
@@ -184,14 +184,17 @@ export function InvoicePrint({ inv }) {
               />
             </div>
             <div>
-              <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#1e293b", marginBottom: 3, lineHeight: 1.2 }}>
-                {inv.from?.name || "Aspiration Asia Trekking & Expedition Pvt Ltd"}
+              <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#1e293b", marginBottom: 4, lineHeight: 1.2 }}>
+                Aspiration Asia Trekking &amp; Expedition Pvt Ltd
               </div>
-              <div style={{ fontSize: "0.88rem", color: "#475569", lineHeight: 1.6 }}>
-                {inv.from?.address1 && <div>{inv.from.address1}</div>}
-                {inv.from?.address2 && <div>{inv.from.address2}</div>}
-                {inv.from?.phone   && <div>{inv.from.phone}</div>}
-                {inv.from?.email   && <div style={{ color: "#2563eb" }}>{inv.from.email}</div>}
+              <div style={{ fontSize: "0.88rem", color: "#475569", lineHeight: 1.55 }}>
+                <div>Near Nyatapol Temple Bhaktapur, Nepal</div>
+                <div>
+                  +977 9746239349 <span style={{ color: "#1e293b" }}>|</span>{" "}
+                  <span style={{ color: "#2563eb" }}>account@aspirationasia.com</span>
+                </div>
+                <div><strong style={{ color: "#1e293b" }}>PAN:</strong> 610278626</div>
+                <div><strong style={{ color: "#1e293b" }}>Registration No:</strong> 290216/78/079</div>
               </div>
             </div>
           </div>
@@ -202,22 +205,6 @@ export function InvoicePrint({ inv }) {
               <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Date:</span>
               <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{inv.invoiceDate || ""}</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Due:</span>
-              <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{inv.dueDate || inv.invoiceDate || ""}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Terms:</span>
-              <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{Number(inv.paymentTermsDays || 0)} days</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Status:</span>
-              <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{paymentStatusLabel[inv.paymentSummary?.status] || "Unpaid"}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>Balance:</span>
-              <span style={{ fontSize: "0.98rem", color: "#1e293b" }}>{cur} {fmt(inv.paymentSummary?.balance ?? inv.total)}</span>
-            </div>
           </div>
         </div>
 
@@ -227,6 +214,7 @@ export function InvoicePrint({ inv }) {
         <div style={{ padding: "10px 32px 10px" }}>
           <span style={{ ...pvLabel, fontSize: 15 }}>Bill To</span>
           {inv.billTo?.name   && <div style={{ fontSize: "0.98rem", fontWeight: 700, color: "#1e293b", marginBottom: 2 }}>{inv.billTo.name}</div>}
+          {inv.clientName && <div style={{ fontSize: "0.88rem", color: "#475569", marginBottom: 2 }}><strong>Client:</strong> {inv.clientName}</div>}
           {inv.billTo?.email  && <div style={{ fontSize: "0.88rem", color: "#2563eb", marginBottom: 2 }}>{inv.billTo.email}</div>}
           {inv.billTo?.address && <div style={{ fontSize: "0.88rem", color: "#475569", marginBottom: 2 }}>{inv.billTo.address}</div>}
           {inv.billTo?.mobile && <div style={{ fontSize: "0.88rem", color: "#475569" }}>{inv.billTo.mobile}</div>}
@@ -376,7 +364,8 @@ export default function InvoiceDetailPage() {
     if (!confirmAdvance?._id) return;
     setRemovingAdvance(true);
     try {
-      await invoiceAPI.removeAdvancePayment(inv._id, confirmAdvance._id);
+      const { data } = await invoiceAPI.removeAdvancePayment(inv._id, confirmAdvance._id);
+      if (data?.data) setInv(data.data);
       toast.success("Advance payment removed");
       setConfirmAdvance(null);
       loadInvoice();
@@ -462,20 +451,18 @@ export default function InvoiceDetailPage() {
               <div className="flex gap-3 items-start">
                 <img src="https://i.ibb.co/bRJr7nNM/images.png" className="w-16 h-16 object-contain" alt="logo" onError={(e) => (e.target.style.display = "none")} />
                 <div>
-                  <p className="font-bold text-slate-800">{inv.from?.name || "Aspiration Asia Trekking & Expedition Pvt Ltd"}</p>
-                  <p className="text-xs text-slate-500">{inv.from?.address1} {inv.from?.address2}</p>
-                  <p className="text-xs text-slate-500">{inv.from?.phone}</p>
-                  <p className="text-xs text-brand-600">{inv.from?.email}</p>
+                  <p className="font-bold text-slate-800">Aspiration Asia Trekking &amp; Expedition Pvt Ltd</p>
+                  <p className="text-xs text-slate-500">Near Nyatapol Temple Bhaktapur, Nepal</p>
+                  <p className="text-xs text-slate-500">+977 9746239349 <span className="text-slate-800">|</span> <span className="text-brand-600">account@aspirationasia.com</span></p>
+                  <p className="text-xs text-slate-500"><span className="font-bold text-slate-800">PAN:</span> 610278626</p>
+                  <p className="text-xs text-slate-500"><span className="font-bold text-slate-800">Registration No:</span> 290216/78/079</p>
                 </div>
               </div>
               <div className="text-right">
                 <p className="text-xl font-bold text-slate-800">{inv.title || "Invoice"}</p>
                 <p className="font-mono text-brand-600 font-semibold">{inv.invoiceNumber || ""}</p>
                 <p className="text-sm text-slate-500">{inv.invoiceDate}</p>
-                <p className="text-xs text-slate-400">Due {inv.dueDate || inv.invoiceDate}</p>
-                <p className="text-xs text-slate-400">Terms {Number(inv.paymentTermsDays || 0)} days</p>
                 {paymentSummary.overdueDays > 0 && <p className="text-xs text-red-500">{paymentSummary.overdueDays} days overdue</p>}
-                <p className="text-xs text-slate-500">Balance {cur} {fmt(paymentSummary.balance ?? inv.total)}</p>
               </div>
             </div>
           </div>
@@ -486,6 +473,7 @@ export default function InvoiceDetailPage() {
           <div className="card-body">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Bill To</p>
             <p className="font-bold text-slate-800">{inv.billTo?.name}</p>
+            {inv.clientName && <p className="text-sm text-slate-500"><span className="font-medium">Client:</span> {inv.clientName}</p>}
             <p className="text-sm text-brand-600">{inv.billTo?.email}</p>
             <p className="text-sm text-slate-500">{inv.billTo?.address}</p>
             <p className="text-sm text-slate-500">{inv.billTo?.mobile}</p>
@@ -601,14 +589,68 @@ export default function InvoiceDetailPage() {
                   ))}
                   {(inv.advancePayments || []).length > 0 && (() => {
                     const paid = paymentSummary.paid ?? (inv.advancePayments || []).reduce((s, a) => s + (Number(a.amount) || 0), 0);
-                    const balance = paymentSummary.balance ?? ((Number(inv.total) || 0) - paid);
                     return (
                       <tr className="bg-slate-50 font-semibold">
                         <td colSpan={2} className="text-right text-slate-700">Total Paid</td>
                         <td className="text-right text-green-700">{cur} {fmt(paid)}</td>
-                        <td colSpan={2} className="text-right">
+                        <td colSpan={2} />
+                      </tr>
+                    );
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Sales Record Payments */}
+        <div className="card mb-4">
+          <div className="card-header">
+            <h3 className="font-semibold text-slate-700 text-sm flex items-center gap-2">
+              <i className="fa fa-receipt text-brand-500" /> Sales Record Payment Entries
+            </h3>
+          </div>
+          {(inv.salesRecordPaymentEntries || []).length === 0 ? (
+            <div className="card-body text-center text-sm text-slate-400 py-6">
+              No sales record payment entries found.
+            </div>
+          ) : (
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th className="text-right">Amount</th>
+                    <th>Slip</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(inv.salesRecordPaymentEntries || []).map((p) => (
+                    <tr key={p._id || `${p.referenceCode}-${p.date}-${p.amount}`}>
+                      <td className="text-sm text-slate-600">{p.date || "—"}</td>
+                      <td className="text-xs font-mono text-slate-600">{p.referenceCode || "—"}</td>
+                      <td className="text-right font-semibold text-green-700">{cur} {fmt(p.amount)}</td>
+                      <td>
+                        {p.slip?.url ? (
+                          <a href={p.slip.url} target="_blank" rel="noreferrer" className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1">
+                            <i className={`fa ${/^application\/pdf/.test(p.slip.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+                            {p.slip.fileName || "View"}
+                          </a>
+                        ) : <span className="text-xs text-slate-400">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                  {(() => {
+                    const salesPaid = (inv.salesRecordPaymentEntries || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+                    const salesBalance = Math.max(0, (Number(inv.total) || 0) - salesPaid);
+                    return (
+                      <tr className="bg-slate-50 font-semibold">
+                        <td colSpan={2} className="text-right text-slate-700">Total</td>
+                        <td className="text-right text-green-700">{cur} {fmt(salesPaid)}</td>
+                        <td className={`text-right ${salesBalance > 0 ? "text-red-600" : "text-green-700"}`}>
                           <span className="text-slate-500 text-xs mr-2">Balance Due</span>
-                          <span className={balance > 0 ? "text-red-600" : "text-green-600"}>{cur} {fmt(Math.max(0, balance))}</span>
+                          {cur} {fmt(salesBalance)}
                         </td>
                       </tr>
                     );
@@ -671,7 +713,16 @@ export default function InvoiceDetailPage() {
         <InvoiceModal
           invoice={inv}
           onClose={() => setEditing(false)}
-          onSaved={() => { setEditing(false); setLoading(true); loadInvoice(); }}
+          onSaved={(updated) => {
+            if (updated) {
+              setInv(updated);
+              qc.setQueryData(["invoice", id], updated);
+            }
+            setEditing(false);
+            loadInvoice();
+            qc.invalidateQueries({ queryKey: ["invoices"] });
+            qc.invalidateQueries({ queryKey: ["sales-records"] });
+          }}
         />
       )}
 
@@ -679,7 +730,8 @@ export default function InvoiceDetailPage() {
         <AddAdvanceModal
           invoice={inv}
           onClose={() => setAdvanceModal(false)}
-          onSaved={() => {
+          onSaved={(updated) => {
+            if (updated) setInv(updated);
             setAdvanceModal(false);
             loadInvoice();
             // The advance also lands in Sales Records — refresh that cache too.

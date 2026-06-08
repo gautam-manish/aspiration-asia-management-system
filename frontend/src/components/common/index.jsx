@@ -89,9 +89,9 @@ export function StatusBadge({ status }) {
 }
 
 // ── Form Field ─────────────────────────────────────────────────────
-export function Field({ label, children, required }) {
+export function Field({ label, children, required, className = "" }) {
   return (
-    <div>
+    <div className={className}>
       <label className="label">
         {label} {required && <span className="text-red-500">*</span>}
       </label>

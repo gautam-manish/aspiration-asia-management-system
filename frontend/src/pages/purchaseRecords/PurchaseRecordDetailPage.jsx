@@ -322,15 +322,15 @@ export default function PurchaseRecordDetailPage() {
                     ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Field label="Date *"><input className="input" type="date" value={txn.date} onChange={(e) => setT("date", e.target.value)} required /></Field>
                   <Field label="Ref / Voucher No."><input className="input" value={txn.refNo} onChange={(e) => setT("refNo", e.target.value)} /></Field>
                   <Field label="Client Name"><input className="input" value={txn.clientName} onChange={(e) => setT("clientName", e.target.value)} /></Field>
                   <Field label="Amount (Rs.) *"><input className="input" type="number" min="0.01" step="0.01" value={txn.amount} onChange={(e) => setT("amount", e.target.value)} required /></Field>
                   <Field label="Description" className="col-span-2"><textarea className="input min-h-[90px]" value={txn.description} onChange={(e) => setT("description", e.target.value)} /></Field>
                   {txn.type === "dr" && (
-                    <Field label="Bank Account *">
-                    <select className="input" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} required>
+                    <Field label="Bank Account *" className="sm:col-span-2 min-w-0">
+                    <select className="input min-w-0 max-w-full truncate" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} required>
                       <option value="">— Select Bank —</option>
                       {bankList.map((b) => (
                         <option key={b._id} value={b.bankName}>{b.bankName} - Balance Rs. {fmt(b.balance)}</option>

@@ -537,7 +537,19 @@ export default function InvoicesPage() {
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const { remove } = useInvoiceMutations();
-  const refresh = () => qc.invalidateQueries({ queryKey: ["invoices"] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["invoice"] });
+    qc.invalidateQueries({ queryKey: ["sales-records"] });
+    qc.invalidateQueries({ queryKey: ["sales-record"] });
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+    qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+  };
 
   const handleDelete = () => {
     remove.mutate(confirm._id, {
@@ -620,7 +632,11 @@ export default function InvoicesPage() {
         )}
       </div>
 
-      {modal && <InvoiceModal onClose={() => setModal(false)} onSaved={() => { setModal(false); refresh(); }} />}
+      {modal && <InvoiceModal onClose={() => setModal(false)} onSaved={(saved) => {
+        if (saved?._id) qc.setQueryData(["invoice", saved._id], saved);
+        setModal(false);
+        refresh();
+      }} />}
       <ConfirmModal open={!!confirm} title="Delete Invoice" message={`Delete invoice ${confirm?.invoiceNumber}?`}
         onConfirm={handleDelete} onCancel={() => setConfirm(null)} loading={remove.isPending} />
     </div>

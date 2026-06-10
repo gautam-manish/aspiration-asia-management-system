@@ -370,7 +370,16 @@ export default function BankAccountsPage() {
     }
   }, [banks, selectedBank]);
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["vendor-payments"] });
+    qc.invalidateQueries({ queryKey: ["office-expenses"] });
+    qc.invalidateQueries({ queryKey: ["purchase-records"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+  };
 
   const handleDelete = () => {
     remove.mutate(confirmDelete._id, {

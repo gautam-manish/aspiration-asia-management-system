@@ -53,6 +53,18 @@ export default function SalesRecordDetailPage() {
   useEffect(() => { if (recordError) notifyError(recordError); }, [recordError]);
 
   const loadRecord = () => qc.invalidateQueries({ queryKey: ["sales-record", id] });
+  const applyUpdatedRecord = (updated) => {
+    if (!updated) return;
+    setRecord(updated);
+    setForm({ ...updated });
+    setEntries((updated.paymentEntries || []).map((e) => ({
+      referenceCode: e.referenceCode || "",
+      amount:        e.amount != null ? String(e.amount) : "",
+      date:          e.date || "",
+      slip:          (e.slip && e.slip.url) ? { ...e.slip } : null,
+    })));
+    qc.setQueryData(["sales-record", id], updated);
+  };
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -107,12 +119,17 @@ export default function SalesRecordDetailPage() {
     if (!form.clientName?.trim()) { toast.error("Client name required"); return; }
     setSaving(true);
     try {
-      await salesRecordAPI.update(id, { ...form, paymentEntries: entries });
+      const { data } = await salesRecordAPI.update(id, { ...form, paymentEntries: entries });
+      applyUpdatedRecord(data?.data);
       toast.success("Record updated ✓");
       setEditing(false);
       loadRecord();
+      qc.invalidateQueries({ queryKey: ["sales-records"] });
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoice"] });
+      qc.invalidateQueries({ queryKey: ["customer-payments"] });
+      qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+      qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
     } catch (err) {
       notifyError(err);
     } finally {
@@ -243,7 +260,12 @@ export default function SalesRecordDetailPage() {
         <AddPaymentEntryModal
           record={record}
           onClose={() => setAddingEntry(false)}
-          onSaved={() => { setAddingEntry(false); loadRecord(); }}
+          onSaved={(updated) => {
+            applyUpdatedRecord(updated);
+            setAddingEntry(false);
+            loadRecord();
+            qc.invalidateQueries({ queryKey: ["sales-records"] });
+          }}
         />
       )}
 
@@ -360,7 +382,7 @@ function AddPaymentEntryModal({ record, onClose, onSaved }) {
         date,
         slip,
       };
-      await salesRecordAPI.update(record._id, {
+      const { data } = await salesRecordAPI.update(record._id, {
         clientName:  record.clientName,
         address:     record.address,
         phone:       record.phone,
@@ -369,9 +391,14 @@ function AddPaymentEntryModal({ record, onClose, onSaved }) {
         paymentEntries: [...existing, newEntry],
       });
       toast.success("Payment entry added ✓");
+      if (data?.data) qc.setQueryData(["sales-record", record._id], data.data);
+      qc.invalidateQueries({ queryKey: ["sales-records"] });
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoice"] });
-      onSaved();
+      qc.invalidateQueries({ queryKey: ["customer-payments"] });
+      qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+      qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+      onSaved(data?.data);
     } catch (err) {
       notifyError(err);
     } finally {

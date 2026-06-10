@@ -64,27 +64,42 @@ export function useBookingByQueryId(queryId, opts = {}) {
 
 export function useBookingMutations() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["bookings"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["bookings"] });
+    qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+  };
 
   return {
     create: useMutation({
       mutationFn: (data) => bookingAPI.create(data).then((r) => r.data?.data),
-      onSuccess: invalidate,
+      onSuccess: (created) => {
+        if (created?._id) qc.setQueryData(["booking", created._id], created);
+        invalidate();
+      },
     }),
     update: useMutation({
       mutationFn: ({ id, data }) => bookingAPI.update(id, data).then((r) => r.data?.data),
-      onSuccess: (_, { id }) => {
+      onSuccess: (updated, { id }) => {
+        if (updated) qc.setQueryData(["booking", id], updated);
         invalidate();
         qc.invalidateQueries({ queryKey: ["booking", id] });
       },
     }),
     updateStatus: useMutation({
       mutationFn: ({ id, status }) => bookingAPI.updateStatus(id, status).then((r) => r.data?.data),
-      onSuccess: invalidate,
+      onSuccess: (updated, { id }) => {
+        if (updated) qc.setQueryData(["booking", id], updated);
+        invalidate();
+        qc.invalidateQueries({ queryKey: ["booking", id] });
+      },
     }),
     saveItinerary: useMutation({
       mutationFn: ({ id, data }) => bookingAPI.saveItinerary(id, data).then((r) => r.data?.data),
-      onSuccess: (_, { id }) => qc.invalidateQueries({ queryKey: ["booking", id] }),
+      onSuccess: (updated, { id }) => {
+        if (updated) qc.setQueryData(["booking", id], updated);
+        invalidate();
+        qc.invalidateQueries({ queryKey: ["booking", id] });
+      },
     }),
   };
 }
@@ -127,7 +142,15 @@ export function useHotelMutations() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ["hotels"] });
   return {
     create: useMutation({ mutationFn: (data) => hotelAPI.create(data), onSuccess: invalidate }),
-    update: useMutation({ mutationFn: ({ id, data }) => hotelAPI.update(id, data), onSuccess: invalidate }),
+    update: useMutation({
+      mutationFn: ({ id, data }) => hotelAPI.update(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["hotel", id], updated);
+        invalidate();
+        qc.invalidateQueries({ queryKey: ["hotel", id] });
+      },
+    }),
     remove: useMutation({ mutationFn: (id) => hotelAPI.remove(id), onSuccess: invalidate }),
   };
 }
@@ -167,7 +190,15 @@ export function useReservationMutations() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ["reservations"] });
   return {
     create: useMutation({ mutationFn: (data) => reservationAPI.create(data), onSuccess: invalidate }),
-    update: useMutation({ mutationFn: ({ id, data }) => reservationAPI.update(id, data), onSuccess: invalidate }),
+    update: useMutation({
+      mutationFn: ({ id, data }) => reservationAPI.update(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["reservation", id], updated);
+        invalidate();
+        qc.invalidateQueries({ queryKey: ["reservation", id] });
+      },
+    }),
   };
 }
 
@@ -210,7 +241,9 @@ export function useVoucherMutations() {
     create: useMutation({ mutationFn: (data) => voucherAPI.create(data), onSuccess: invalidate }),
     update: useMutation({
       mutationFn: ({ id, data }) => voucherAPI.update(id, data),
-      onSuccess: (_, { id }) => {
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["voucher", id], updated);
         invalidate();
         qc.invalidateQueries({ queryKey: ["voucher", id] });
       },
@@ -250,9 +283,24 @@ export function useInvoice(id) {
 
 export function useInvoiceMutations() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["invoices"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+    qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+  };
   return {
-    create: useMutation({ mutationFn: (data) => invoiceAPI.create(data), onSuccess: invalidate }),
+    create: useMutation({
+      mutationFn: (data) => invoiceAPI.create(data),
+      onSuccess: (res) => {
+        const created = res?.data?.data;
+        if (created?._id) qc.setQueryData(["invoice", created._id], created);
+        invalidate();
+      },
+    }),
     update: useMutation({
       mutationFn: ({ id, data }) => invoiceAPI.update(id, data),
       onSuccess: (res, { id }) => {
@@ -261,9 +309,16 @@ export function useInvoiceMutations() {
         invalidate();
         qc.invalidateQueries({ queryKey: ["invoice", id] });
         qc.invalidateQueries({ queryKey: ["sales-records"] });
+        qc.invalidateQueries({ queryKey: ["sales-record"] });
       },
     }),
-    remove: useMutation({ mutationFn: (id) => invoiceAPI.remove(id), onSuccess: invalidate }),
+    remove: useMutation({
+      mutationFn: (id) => invoiceAPI.remove(id),
+      onSuccess: (_, id) => {
+        qc.removeQueries({ queryKey: ["invoice", id] });
+        invalidate();
+      },
+    }),
   };
 }
 
@@ -302,8 +357,13 @@ export function useCashReceiptMutations() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["cash-receipts"] });
     qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["customer-payment"] });
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["invoice"] });
     qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
     qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
     qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
@@ -353,10 +413,29 @@ export function useSundryDropdown(params = {}) {
 
 export function useSundryMutations() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["sundry"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["sundry"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+  };
   return {
-    create: useMutation({ mutationFn: (data) => sundryAPI.create(data), onSuccess: invalidate }),
-    update: useMutation({ mutationFn: ({ id, data }) => sundryAPI.update(id, data), onSuccess: invalidate }),
+    create: useMutation({
+      mutationFn: (data) => sundryAPI.create(data),
+      onSuccess: (res) => {
+        const created = res?.data?.data;
+        if (created?._id) qc.setQueryData(["sundry", created._id], created);
+        invalidate();
+      },
+    }),
+    update: useMutation({
+      mutationFn: ({ id, data }) => sundryAPI.update(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["sundry", id], updated);
+        invalidate();
+        qc.invalidateQueries({ queryKey: ["sundry", id] });
+      },
+    }),
   };
 }
 
@@ -397,16 +476,28 @@ export function useSalesRecordMutations() {
     qc.invalidateQueries({ queryKey: ["invoices"] });
     qc.invalidateQueries({ queryKey: ["invoice"] });
     qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["customer-payment"] });
     qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
     qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
     qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
   return {
-    create: useMutation({ mutationFn: (data) => salesRecordAPI.create(data), onSuccess: invalidate }),
+    create: useMutation({
+      mutationFn: (data) => salesRecordAPI.create(data),
+      onSuccess: (res) => {
+        const created = res?.data?.data;
+        if (created?._id) qc.setQueryData(["sales-record", created._id], created);
+        invalidate();
+      },
+    }),
     update: useMutation({
       mutationFn: ({ id, data }) => salesRecordAPI.update(id, data),
-      onSuccess: (_, { id }) => {
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["sales-record", id], updated);
         invalidate();
         qc.invalidateQueries({ queryKey: ["sales-record", id] });
       },
@@ -450,20 +541,44 @@ export function usePurchaseRecordMutations() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["purchase-records"] });
     qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["customer-payment"] });
     qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
     qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
   return {
-    create:         useMutation({ mutationFn: (data) => purchaseRecordAPI.create(data), onSuccess: invalidate }),
-    update:         useMutation({ mutationFn: ({ id, data }) => purchaseRecordAPI.update(id, data), onSuccess: invalidate }),
+    create:         useMutation({
+      mutationFn: (data) => purchaseRecordAPI.create(data),
+      onSuccess: (res) => {
+        const created = res?.data?.data;
+        if (created?._id) qc.setQueryData(["purchase-record", created._id], created);
+        invalidate();
+      },
+    }),
+    update:         useMutation({
+      mutationFn: ({ id, data }) => purchaseRecordAPI.update(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["purchase-record", id], updated);
+        invalidate();
+        qc.invalidateQueries({ queryKey: ["purchase-record", id] });
+      },
+    }),
     remove:         useMutation({ mutationFn: (id) => purchaseRecordAPI.remove(id), onSuccess: invalidate }),
     addTransaction: useMutation({
       mutationFn: ({ id, data }) => purchaseRecordAPI.addTransaction(id, data),
-      onSuccess: (_, { id }) => {
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["purchase-record", id], updated);
+        qc.invalidateQueries({ queryKey: ["purchase-records"] });
         qc.invalidateQueries({ queryKey: ["purchase-record", id] });
         qc.invalidateQueries({ queryKey: ["customer-payments"] });
+        qc.invalidateQueries({ queryKey: ["customer-payment"] });
         qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+        qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+        qc.invalidateQueries({ queryKey: ["journal-entries"] });
         qc.invalidateQueries({ queryKey: ["bank-accounts"] });
         qc.invalidateQueries({ queryKey: ["bank-account"] });
       },
@@ -528,12 +643,25 @@ export function useBankDropdown() {
 
 export function useBankAccountMutations() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+  };
   return {
-    create: useMutation({ mutationFn: (data) => bankAccountAPI.create(data), onSuccess: invalidate }),
+    create: useMutation({
+      mutationFn: (data) => bankAccountAPI.create(data),
+      onSuccess: (res) => {
+        const created = res?.data?.data;
+        if (created?._id) qc.setQueryData(["bank-account", created._id], created);
+        invalidate();
+      },
+    }),
     update: useMutation({
       mutationFn: ({ id, data }) => bankAccountAPI.update(id, data),
-      onSuccess: (_, { id }) => {
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["bank-account", id], updated);
         invalidate();
         qc.invalidateQueries({ queryKey: ["bank-account", id] });
       },
@@ -541,9 +669,13 @@ export function useBankAccountMutations() {
     remove: useMutation({ mutationFn: (id) => bankAccountAPI.remove(id), onSuccess: invalidate }),
     addTransaction: useMutation({
       mutationFn: ({ id, data }) => bankAccountAPI.addTransaction(id, data),
-      onSuccess: (_, { id }) => {
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["bank-account", id], updated);
         invalidate();
         qc.invalidateQueries({ queryKey: ["bank-account", id] });
+        qc.invalidateQueries({ queryKey: ["purchase-records"] });
+        qc.invalidateQueries({ queryKey: ["office-expenses"] });
       },
     }),
   };
@@ -578,15 +710,39 @@ export function useCustomerPaymentMutations() {
     qc.invalidateQueries({ queryKey: ["customer-payments"] });
     qc.invalidateQueries({ queryKey: ["customer-payment"] });
     qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["invoice"] });
     qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
     qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
     qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
   return {
-    create: useMutation({ mutationFn: (data) => customerPaymentAPI.create(data), onSuccess: invalidate }),
-    update: useMutation({ mutationFn: ({ id, data }) => customerPaymentAPI.update(id, data), onSuccess: invalidate }),
-    void: useMutation({ mutationFn: ({ id, data }) => customerPaymentAPI.void(id, data), onSuccess: invalidate }),
+    create: useMutation({
+      mutationFn: (data) => customerPaymentAPI.create(data),
+      onSuccess: (res) => {
+        const created = res?.data?.data;
+        if (created?._id) qc.setQueryData(["customer-payment", created._id], created);
+        invalidate();
+      },
+    }),
+    update: useMutation({
+      mutationFn: ({ id, data }) => customerPaymentAPI.update(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["customer-payment", id], updated);
+        invalidate();
+      },
+    }),
+    void: useMutation({
+      mutationFn: ({ id, data }) => customerPaymentAPI.void(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["customer-payment", id], updated);
+        invalidate();
+      },
+    }),
   };
 }
 
@@ -628,13 +784,39 @@ export function useVendorBillMutations() {
     qc.invalidateQueries({ queryKey: ["vendor-bills"] });
     qc.invalidateQueries({ queryKey: ["vendor-bill"] });
     qc.invalidateQueries({ queryKey: ["reports", "ap-aging"] });
+    qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+    qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
     qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
   return {
-    create: useMutation({ mutationFn: (data) => vendorBillAPI.create(data), onSuccess: invalidate }),
-    update: useMutation({ mutationFn: ({ id, data }) => vendorBillAPI.update(id, data), onSuccess: invalidate }),
-    void: useMutation({ mutationFn: ({ id, data }) => vendorBillAPI.void(id, data), onSuccess: invalidate }),
+    create: useMutation({
+      mutationFn: (data) => vendorBillAPI.create(data),
+      onSuccess: (res) => {
+        const created = res?.data?.data;
+        if (created?._id) qc.setQueryData(["vendor-bill", created._id], created);
+        invalidate();
+      },
+    }),
+    update: useMutation({
+      mutationFn: ({ id, data }) => vendorBillAPI.update(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["vendor-bill", id], updated);
+        invalidate();
+      },
+    }),
+    void: useMutation({
+      mutationFn: ({ id, data }) => vendorBillAPI.void(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["vendor-bill", id], updated);
+        invalidate();
+      },
+    }),
   };
 }
 
@@ -669,11 +851,37 @@ export function useVendorPaymentMutations() {
     qc.invalidateQueries({ queryKey: ["vendor-bills"] });
     qc.invalidateQueries({ queryKey: ["vendor-bill"] });
     qc.invalidateQueries({ queryKey: ["reports", "ap-aging"] });
+    qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
   return {
-    create: useMutation({ mutationFn: (data) => vendorPaymentAPI.create(data), onSuccess: invalidate }),
-    update: useMutation({ mutationFn: ({ id, data }) => vendorPaymentAPI.update(id, data), onSuccess: invalidate }),
-    void: useMutation({ mutationFn: ({ id, data }) => vendorPaymentAPI.void(id, data), onSuccess: invalidate }),
+    create: useMutation({
+      mutationFn: (data) => vendorPaymentAPI.create(data),
+      onSuccess: (res) => {
+        const created = res?.data?.data;
+        if (created?._id) qc.setQueryData(["vendor-payment", created._id], created);
+        invalidate();
+      },
+    }),
+    update: useMutation({
+      mutationFn: ({ id, data }) => vendorPaymentAPI.update(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["vendor-payment", id], updated);
+        invalidate();
+      },
+    }),
+    void: useMutation({
+      mutationFn: ({ id, data }) => vendorPaymentAPI.void(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["vendor-payment", id], updated);
+        invalidate();
+      },
+    }),
   };
 }
 
@@ -706,13 +914,36 @@ export function useOfficeExpenseMutations() {
     qc.invalidateQueries({ queryKey: ["office-expenses"] });
     qc.invalidateQueries({ queryKey: ["office-expense"] });
     qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
     qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
   return {
-    create: useMutation({ mutationFn: (data) => officeExpenseAPI.create(data), onSuccess: invalidate }),
-    update: useMutation({ mutationFn: ({ id, data }) => officeExpenseAPI.update(id, data), onSuccess: invalidate }),
-    void: useMutation({ mutationFn: ({ id, data }) => officeExpenseAPI.void(id, data), onSuccess: invalidate }),
+    create: useMutation({
+      mutationFn: (data) => officeExpenseAPI.create(data),
+      onSuccess: (res) => {
+        const created = res?.data?.data;
+        if (created?._id) qc.setQueryData(["office-expense", created._id], created);
+        invalidate();
+      },
+    }),
+    update: useMutation({
+      mutationFn: ({ id, data }) => officeExpenseAPI.update(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["office-expense", id], updated);
+        invalidate();
+      },
+    }),
+    void: useMutation({
+      mutationFn: ({ id, data }) => officeExpenseAPI.void(id, data),
+      onSuccess: (res, { id }) => {
+        const updated = res?.data?.data;
+        if (updated) qc.setQueryData(["office-expense", id], updated);
+        invalidate();
+      },
+    }),
   };
 }
 

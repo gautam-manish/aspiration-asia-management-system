@@ -294,8 +294,17 @@ export default function VendorBillsPage() {
   const { void: voidMutation } = useVendorBillMutations();
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["vendor-bills"] });
+    qc.invalidateQueries({ queryKey: ["vendor-bill"] });
     qc.invalidateQueries({ queryKey: ["vendor-payments"] });
+    qc.invalidateQueries({ queryKey: ["vendor-payment"] });
     qc.invalidateQueries({ queryKey: ["reports", "ap-aging"] });
+    qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+    qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
 
   const totalOutstanding = bills.reduce((sum, bill) => sum + (bill.status !== "void" ? Number(bill.balance || 0) : 0), 0);

@@ -76,7 +76,7 @@ function AddModal({ onClose, onSaved }) {
     }
     setLoading(true);
     try {
-      await purchaseRecordAPI.create({
+      const { data } = await purchaseRecordAPI.create({
         debtorName:    debtorNameClean,
         debtorCompany: selected?.companyName  || existing?.debtorCompany || "",
         debtorPan:     selected?.panVatGst    || existing?.debtorPan     || "",
@@ -88,8 +88,13 @@ function AddModal({ onClose, onSaved }) {
         ...(existing ? {} : { openingBalance: Number(selected.openingBalance) || 0 }),
         transaction:   { ...txn, bank: txn.type === "dr" ? txn.bank : "", amount: Number(txn.amount) },
       });
+      if (data?.data?._id) qc.setQueryData(["purchase-record", data.data._id], data.data);
       toast.success(existing ? "Entry added to existing ledger ✓" : "New ledger created ✓");
       qc.invalidateQueries({ queryKey: ["purchase-records"] });
+      qc.invalidateQueries({ queryKey: ["customer-payments"] });
+      qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+      qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+      qc.invalidateQueries({ queryKey: ["journal-entries"] });
       qc.invalidateQueries({ queryKey: ["bank-accounts"] });
       qc.invalidateQueries({ queryKey: ["bank-account"] });
       onSaved();
@@ -258,7 +263,17 @@ export default function PurchaseRecordsPage() {
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const { remove } = usePurchaseRecordMutations();
-  const refresh = () => qc.invalidateQueries({ queryKey: ["purchase-records"] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["purchase-records"] });
+    qc.invalidateQueries({ queryKey: ["purchase-record"] });
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["customer-payment"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
+  };
 
   const handleDelete = () => {
     remove.mutate(confirm._id, {

@@ -1,12 +1,10 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { ConfirmModal, PageLoader } from "../../components/common";
 import AuditTrailPanel from "../../components/common/AuditTrailPanel";
 import { notifyError } from "../../utils/helpers";
 import { useCustomerPayment, useCustomerPaymentMutations } from "../../hooks/useApiQueries";
 import { useEffect, useState } from "react";
-import { PaymentModal } from "./CustomerPaymentsPage";
 import { useAuth } from "../../context/AuthContext";
 
 const money = (value, currency = "Rs.") => `${currency} ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -22,10 +20,8 @@ function Info({ label, children }) {
 export default function CustomerPaymentDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const { user } = useAuth();
   const [confirmVoid, setConfirmVoid] = useState(false);
-  const [editing, setEditing] = useState(false);
   const { data: payment, isLoading, error } = useCustomerPayment(id);
   const { void: voidPayment } = useCustomerPaymentMutations();
 
@@ -57,9 +53,13 @@ export default function CustomerPaymentDetailPage() {
         </div>
         <div className="flex gap-2">
           {statusBadge(payment.status)}
-          {isAdmin && payment.status === "posted" && payment.source === "manual" && <button onClick={() => setEditing(true)} className="btn-secondary"><i className="fa fa-edit" /> Edit</button>}
-          {isAdmin && payment.status === "posted" && <button onClick={() => setConfirmVoid(true)} className="btn-secondary text-red-600"><i className="fa fa-ban" /> Void</button>}
+          {isAdmin && payment.status === "posted" && payment.source === "manual" && <button onClick={() => setConfirmVoid(true)} className="btn-secondary text-red-600"><i className="fa fa-ban" /> Void</button>}
         </div>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
+        <p className="font-semibold text-slate-800">Ledger record only</p>
+        <p className="text-xs text-slate-500 mt-0.5">Invoice payment entries are maintained from Sales Records. This page is for accounting review, audit trail, and voiding old manual entries when needed.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
@@ -114,12 +114,6 @@ export default function CustomerPaymentDetailPage() {
         onCancel={() => setConfirmVoid(false)}
         loading={voidPayment.isPending}
       />
-      {editing && <PaymentModal payment={payment} onClose={() => setEditing(false)} onSaved={() => {
-        setEditing(false);
-        qc.invalidateQueries({ queryKey: ["customer-payment", id] });
-        qc.invalidateQueries({ queryKey: ["customer-payments"] });
-        qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
-      }} />}
     </div>
   );
 }

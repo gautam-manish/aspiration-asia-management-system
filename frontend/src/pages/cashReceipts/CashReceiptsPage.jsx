@@ -171,7 +171,19 @@ export default function CashReceiptsPage() {
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const { remove } = useCashReceiptMutations();
-  const refresh = () => qc.invalidateQueries({ queryKey: ["cash-receipts"] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["cash-receipts"] });
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["customer-payment"] });
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["invoice"] });
+    qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
+  };
 
   const handleDelete = () => {
     remove.mutate(confirm._id, {

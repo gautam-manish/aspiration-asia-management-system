@@ -178,14 +178,19 @@ function SalesModal({ onClose, onSaved }) {
     setLoading(true);
     try {
       if (existingId) {
-        await salesRecordAPI.update(existingId, { ...form, paymentEntries: entries });
+        const { data } = await salesRecordAPI.update(existingId, { ...form, paymentEntries: entries });
+        if (data?.data) qc.setQueryData(["sales-record", existingId], data.data);
         toast.success("Sales record updated ✓");
       } else {
         await salesRecordAPI.create({ ...form, paymentEntries: entries });
         toast.success("Sales record created ✓");
       }
+      qc.invalidateQueries({ queryKey: ["sales-records"] });
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoice"] });
+      qc.invalidateQueries({ queryKey: ["customer-payments"] });
+      qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+      qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
       onSaved();
     } catch (err) {
       notifyError(err);
@@ -316,7 +321,18 @@ export default function SalesRecordsPage() {
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
   const { remove } = useSalesRecordMutations();
-  const refresh = () => qc.invalidateQueries({ queryKey: ["sales-records"] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["sales-records"] });
+    qc.invalidateQueries({ queryKey: ["sales-record"] });
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["invoice"] });
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["customer-payment"] });
+    qc.invalidateQueries({ queryKey: ["reports", "ar-aging"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+  };
 
   const handleDelete = () => {
     remove.mutate(confirm._id, {

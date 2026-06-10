@@ -48,12 +48,20 @@ export default function PurchaseRecordDetailPage() {
     }
     setSaving(true);
     try {
-      await purchaseRecordAPI.addTransaction(id, { transaction: { ...txn, bank: txn.type === "dr" ? txn.bank : "", amount: Number(txn.amount) } });
+      const { data } = await purchaseRecordAPI.addTransaction(id, { transaction: { ...txn, bank: txn.type === "dr" ? txn.bank : "", amount: Number(txn.amount) } });
+      if (data?.data) {
+        setRecord(data.data);
+        qc.setQueryData(["purchase-record", id], data.data);
+      }
       toast.success("Transaction added ✓");
       setAddModal(false);
       setTxn({ date: "", refNo: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
       loadRecord();
       qc.invalidateQueries({ queryKey: ["purchase-records"] });
+      qc.invalidateQueries({ queryKey: ["customer-payments"] });
+      qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+      qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+      qc.invalidateQueries({ queryKey: ["journal-entries"] });
       qc.invalidateQueries({ queryKey: ["bank-accounts"] });
       qc.invalidateQueries({ queryKey: ["bank-account"] });
     } catch (err) {

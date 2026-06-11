@@ -114,6 +114,13 @@ export const vendorBillAPI = {
   create:  (data)   => api.post("/vendor-bills", data),
   update:  (id, data) => api.put(`/vendor-bills/${id}`, data),
   void:    (id, data = {}) => api.patch(`/vendor-bills/${id}/void`, data),
+  uploadTaxInvoiceSlip: (file) => {
+    const fd = new FormData();
+    fd.append("slip", file, file.name);
+    return api.post("/vendor-bills/upload-tax-invoice-slip", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
 };
 
 // Vendor Payments

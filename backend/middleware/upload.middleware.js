@@ -28,6 +28,10 @@ fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 const ADVANCE_ROOT = path.join(UPLOAD_BASE, "advance-slips");
 fs.mkdirSync(ADVANCE_ROOT, { recursive: true });
 
+// Where final vendor tax-invoice files live.
+const VENDOR_TAX_INVOICE_ROOT = path.join(UPLOAD_BASE, "vendor-tax-invoices");
+fs.mkdirSync(VENDOR_TAX_INVOICE_ROOT, { recursive: true });
+
 const ALLOWED_MIMES = new Set([
   "application/pdf",
   "image/jpeg", // covers .jpg and .jpeg
@@ -47,6 +51,15 @@ const storage = multer.diskStorage({
 
 const advanceStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, ADVANCE_ROOT),
+  filename: (_req, file, cb) => {
+    const rand = crypto.randomBytes(6).toString("hex");
+    const ext  = path.extname(file.originalname || "").toLowerCase() || ".bin";
+    cb(null, `${Date.now()}-${rand}${ext}`);
+  },
+});
+
+const vendorTaxInvoiceStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, VENDOR_TAX_INVOICE_ROOT),
   filename: (_req, file, cb) => {
     const rand = crypto.randomBytes(6).toString("hex");
     const ext  = path.extname(file.originalname || "").toLowerCase() || ".bin";
@@ -80,4 +93,12 @@ export const uploadAdvanceSlip = multer({
   },
 });
 
-export { UPLOAD_BASE, UPLOAD_ROOT, ADVANCE_ROOT };
+export const uploadVendorTaxInvoiceSlip = multer({
+  storage: vendorTaxInvoiceStorage,
+  fileFilter,
+  limits: {
+    fileSize: 1 * 1024 * 1024,
+  },
+});
+
+export { UPLOAD_BASE, UPLOAD_ROOT, ADVANCE_ROOT, VENDOR_TAX_INVOICE_ROOT };

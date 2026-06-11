@@ -27,6 +27,16 @@ const vendorBillLineSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const slipSchema = new mongoose.Schema(
+  {
+    url: { type: String, trim: true, default: "" },
+    fileName: { type: String, trim: true, default: "" },
+    mimeType: { type: String, trim: true, default: "" },
+    size: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
 const vendorBillSchema = new mongoose.Schema(
   {
     billNumber: { type: String, trim: true, required: true, unique: true, index: true },
@@ -48,6 +58,7 @@ const vendorBillSchema = new mongoose.Schema(
     subtotal: { type: Number, default: 0, min: 0 },
     taxAmount: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
+    taxInvoiceSlip: { type: slipSchema, default: () => ({}) },
     amountPaid: { type: Number, default: 0, min: 0 },
     balance: { type: Number, default: 0, min: 0 },
     currency: { type: String, trim: true, default: "Rs." },

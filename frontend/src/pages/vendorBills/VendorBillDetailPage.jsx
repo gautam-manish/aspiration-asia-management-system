@@ -8,6 +8,7 @@ import { useVendorBill, useVendorBillMutations } from "../../hooks/useApiQueries
 import { useEffect, useState } from "react";
 import { BillModal } from "./VendorBillsPage";
 import { useAuth } from "../../context/AuthContext";
+import { resolveUploadUrl } from "../../api";
 
 const money = (value, currency = "Rs.") => `${currency} ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -36,7 +37,7 @@ export default function VendorBillDetailPage() {
   if (isLoading) return <PageLoader />;
   const bill = data?.bill;
   const payments = data?.payments || [];
-  if (!bill) return <div className="text-center py-20 text-slate-400">Vendor bill not found</div>;
+  if (!bill) return <div className="text-center py-20 text-slate-400">Vendor cost entry not found</div>;
 
   const summary = bill.paymentSummary || {};
   const status = summary.status || bill.status || "open";
@@ -59,7 +60,7 @@ export default function VendorBillDetailPage() {
         <div className="flex items-center gap-3">
           <button onClick={() => navigate("/vendor-bills")} className="btn-ghost p-2"><i className="fa fa-arrow-left" /></button>
           <div>
-            <h1 className="page-title">Vendor Bill</h1>
+            <h1 className="page-title">Vendor Cost / Tax Invoice</h1>
             <p className="page-subtitle font-mono text-brand-600">{bill.billNumber || bill._id}</p>
           </div>
         </div>
@@ -71,10 +72,14 @@ export default function VendorBillDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
-        <div className="card card-body"><p className="text-xs text-slate-500 mb-1">Total</p><p className="text-2xl font-bold text-slate-800">{money(bill.total, cur)}</p></div>
+        <div className="card card-body"><p className="text-xs text-slate-500 mb-1">Total Cost</p><p className="text-2xl font-bold text-slate-800">{money(bill.total, cur)}</p></div>
         <div className="card card-body"><p className="text-xs text-slate-500 mb-1">Paid</p><p className="text-2xl font-bold text-green-600">{money(summary.paid ?? bill.amountPaid, cur)}</p></div>
         <div className="card card-body"><p className="text-xs text-slate-500 mb-1">Balance</p><p className="text-2xl font-bold text-red-600">{money(summary.balance ?? bill.balance, cur)}</p></div>
-        <div className="card card-body"><p className="text-xs text-slate-500 mb-1">Due Date</p><p className="text-xl font-bold text-slate-800">{bill.dueDate || bill.billDate || "-"}</p>{summary.overdueDays > 0 && <p className="text-xs text-red-500">{summary.overdueDays} days late</p>}</div>
+        <div className="card card-body">
+          <p className="text-xs text-slate-500 mb-1">Tax Invoice</p>
+          <p className={`text-xl font-bold ${bill.taxInvoiceSlip?.url ? "text-green-600" : "text-amber-600"}`}>{bill.taxInvoiceSlip?.url ? "Uploaded" : "Pending"}</p>
+          <p className="text-xs text-slate-400 mt-1">{bill.billDate || "-"}</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
@@ -91,18 +96,26 @@ export default function VendorBillDetailPage() {
         </div>
 
         <div className="card">
-          <div className="card-header"><h2 className="font-display font-semibold text-slate-800">Bill Info</h2></div>
+          <div className="card-header"><h2 className="font-display font-semibold text-slate-800">Cost / Tax Invoice Info</h2></div>
           <div className="card-body grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Info label="Vendor Invoice #">{bill.vendorInvoiceNumber}</Info>
-            <Info label="Bill Date">{bill.billDate}</Info>
+            <Info label="Vendor Tax Invoice #">{bill.vendorInvoiceNumber}</Info>
+            <Info label="Entry / Invoice Date">{bill.billDate}</Info>
             <Info label="Booking">{bill.bookingId && <span className="font-mono">{bill.bookingId}</span>}</Info>
+            <Info label="Tax Invoice Slip">
+              {bill.taxInvoiceSlip?.url ? (
+                <a href={resolveUploadUrl(bill.taxInvoiceSlip.url)} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline inline-flex items-center gap-1">
+                  <i className={`fa ${/^application\/pdf/.test(bill.taxInvoiceSlip.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+                  {bill.taxInvoiceSlip.fileName || "View tax invoice"}
+                </a>
+              ) : null}
+            </Info>
             <Info label="Notes"><span className="whitespace-pre-wrap">{bill.notes}</span></Info>
           </div>
         </div>
       </div>
 
       <div className="card mb-4">
-        <div className="card-header"><h2 className="font-display font-semibold text-slate-800">Bill Lines</h2></div>
+        <div className="card-header"><h2 className="font-display font-semibold text-slate-800">Cost Lines</h2></div>
         <div className="table-wrapper">
           <table className="table">
             <thead><tr><th>Service</th><th>Description</th><th className="text-right">Qty</th><th className="text-right">Rate</th><th className="text-right">Amount</th></tr></thead>
@@ -164,8 +177,8 @@ export default function VendorBillDetailPage() {
 
       <ConfirmModal
         open={confirmVoid}
-        title="Void Vendor Bill"
-        message={`Void bill ${bill.billNumber}? Posted payments must be voided first.`}
+        title="Void Vendor Cost Entry"
+        message={`Void entry ${bill.billNumber}? Posted payments must be voided first.`}
         onConfirm={handleVoid}
         onCancel={() => setConfirmVoid(false)}
         loading={voidBill.isPending}

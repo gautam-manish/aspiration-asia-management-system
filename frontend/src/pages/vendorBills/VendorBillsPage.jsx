@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { bookingAPI } from "../../api";
+import { bookingAPI, resolveUploadUrl, vendorBillAPI } from "../../api";
 import { ConfirmModal, Empty, Field, PageLoader, Pagination, SearchBar } from "../../components/common";
 import { notifyError } from "../../utils/helpers";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
@@ -19,6 +19,62 @@ const today = () => new Date().toISOString().slice(0, 10);
 const money = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const EMPTY_LINE = { serviceType: "hotel", description: "", qty: 1, rate: "", amount: "" };
+const TAX_INVOICE_ACCEPT = ".pdf,.jpg,.jpeg,application/pdf,image/jpeg";
+
+const fmtSize = (bytes) => {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+function TaxInvoiceSlipField({ slip, onChange }) {
+  const [busy, setBusy] = useState(false);
+
+  const onPick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    const ok = /\.(pdf|jpe?g)$/i.test(file.name) || /^application\/pdf$|^image\/jpeg$/i.test(file.type);
+    if (!ok) { toast.error("Only PDF, JPG, or JPEG files are allowed"); return; }
+    if (file.size > 1 * 1024 * 1024) { toast.error("File is too large. Please upload under 1 MB"); return; }
+
+    setBusy(true);
+    try {
+      const { data } = await vendorBillAPI.uploadTaxInvoiceSlip(file);
+      onChange(data?.data || null);
+      toast.success("Tax invoice uploaded");
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (slip?.url) {
+    return (
+      <div className="flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+        <i className={`fa ${/^application\/pdf/.test(slip.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+        <a href={resolveUploadUrl(slip.url)} target="_blank" rel="noreferrer" className="font-medium text-brand-700 truncate hover:underline" title={slip.fileName}>
+          {slip.fileName || "Tax invoice"}
+        </a>
+        <span className="text-slate-400 ml-auto whitespace-nowrap">{fmtSize(slip.size)}</span>
+        <button type="button" onClick={() => onChange(null)} disabled={busy} className="btn-ghost text-red-400 hover:text-red-600 p-1" title="Remove tax invoice">
+          <i className="fa fa-times" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <label className={`flex items-center justify-center gap-2 text-xs border-2 border-dashed border-slate-300 rounded-lg px-2 py-2.5 cursor-pointer hover:border-brand-400 hover:bg-blue-50 transition-colors ${busy ? "opacity-50 pointer-events-none" : ""}`}>
+      <i className="fa fa-paperclip" />
+      <span>{busy ? "Uploading..." : "Upload tax invoice (PDF / JPG / JPEG)"}</span>
+      <input type="file" accept={TAX_INVOICE_ACCEPT} onChange={onPick} className="hidden" disabled={busy} />
+    </label>
+  );
+}
 
 export function BillModal({ bill, onClose, onSaved }) {
   const isEdit = !!bill;
@@ -39,6 +95,7 @@ export function BillModal({ bill, onClose, onSaved }) {
     billDate: bill.billDate || today(),
     bookingId: bill.bookingId || "",
     taxAmount: bill.taxAmount || "",
+    taxInvoiceSlip: bill.taxInvoiceSlip?.url ? { ...bill.taxInvoiceSlip } : null,
     notes: bill.notes || "",
     lines: (bill.lines || []).length ? bill.lines.map((line) => ({ ...line })) : [{ ...EMPTY_LINE }],
   } : {
@@ -48,6 +105,7 @@ export function BillModal({ bill, onClose, onSaved }) {
     billDate: today(),
     bookingId: "",
     taxAmount: "",
+    taxInvoiceSlip: null,
     notes: "",
     lines: [{ ...EMPTY_LINE }],
   });
@@ -140,7 +198,7 @@ export function BillModal({ bill, onClose, onSaved }) {
     <div className="modal-overlay">
       <div className="modal max-w-4xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="font-display font-semibold text-slate-800">{isEdit ? "Edit Vendor Bill" : "New Vendor Bill"}</h2>
+          <h2 className="font-display font-semibold text-slate-800">{isEdit ? "Edit Vendor Cost / Tax Invoice" : "New Vendor Cost Entry"}</h2>
           <button onClick={onClose} className="btn-ghost p-1"><i className="fa fa-times" /></button>
         </div>
         <form onSubmit={submit}>
@@ -158,10 +216,10 @@ export function BillModal({ bill, onClose, onSaved }) {
               <Field label="Company">
                 <input className="input" value={form.vendor.company} onChange={(e) => setVendor("company", e.target.value)} />
               </Field>
-              <Field label="Vendor Invoice #">
+              <Field label="Vendor Tax Invoice #">
                 <input className="input" value={form.vendorInvoiceNumber} onChange={(e) => set("vendorInvoiceNumber", e.target.value)} />
               </Field>
-              <Field label="Bill Date" required>
+              <Field label="Entry / Invoice Date" required>
                 <input className="input" type="date" value={form.billDate} onChange={(e) => set("billDate", e.target.value)} required />
               </Field>
               <Field label="Booking ID" required>
@@ -175,11 +233,14 @@ export function BillModal({ bill, onClose, onSaved }) {
               <Field label="Tax Amount">
                 <input className="input" type="number" min="0" step="any" value={form.taxAmount} onChange={(e) => set("taxAmount", e.target.value)} />
               </Field>
+              <Field label="Final Tax Invoice Slip" className="sm:col-span-2">
+                <TaxInvoiceSlipField slip={form.taxInvoiceSlip} onChange={(slip) => set("taxInvoiceSlip", slip)} />
+              </Field>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Bill Lines</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Cost Lines</p>
                 <button type="button" className="btn-secondary text-xs" onClick={() => set("lines", [...form.lines, { ...EMPTY_LINE }])}>
                   <i className="fa fa-plus" /> Line
                 </button>
@@ -220,7 +281,7 @@ export function BillModal({ bill, onClose, onSaved }) {
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-            <button type="submit" disabled={create.isPending || update.isPending} className="btn-primary"><i className="fa fa-save" /> {isEdit ? "Update Bill" : "Save Bill"}</button>
+            <button type="submit" disabled={create.isPending || update.isPending} className="btn-primary"><i className="fa fa-save" /> {isEdit ? "Update Entry" : "Save Entry"}</button>
           </div>
         </form>
       </div>
@@ -264,12 +325,12 @@ function PaymentModal({ bill, onClose, onSaved }) {
     <div className="modal-overlay">
       <div className="modal max-w-xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="font-display font-semibold text-slate-800">Pay Vendor Bill</h2>
+          <h2 className="font-display font-semibold text-slate-800">Pay Vendor Cost</h2>
           <button onClick={onClose} className="btn-ghost p-1"><i className="fa fa-times" /></button>
         </div>
         <form onSubmit={submit}>
           <div className="modal-body space-y-3">
-            <p className="text-sm text-slate-500">Bill <span className="font-mono">{bill.billNumber}</span> balance {money(bill.balance)}</p>
+            <p className="text-sm text-slate-500">Cost entry <span className="font-mono">{bill.billNumber}</span> balance {money(bill.balance)}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Payment Date" required><input className="input" type="date" value={form.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} required /></Field>
               <Field label="Amount" required><input className="input" type="number" min="0.01" step="any" value={form.amount} onChange={(e) => set("amount", e.target.value)} required /></Field>
@@ -339,21 +400,21 @@ export default function VendorBillsPage() {
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Vendor Bills</h1>
-          <p className="page-subtitle">Accounts payable bill register</p>
+          <h1 className="page-title">Vendor Costs / Tax Invoices</h1>
+          <p className="page-subtitle">Estimated vendor costs, installment payments, and final tax invoices</p>
         </div>
-        <button onClick={() => setModal(true)} className="btn-primary"><i className="fa fa-plus" /> New Bill</button>
+        <button onClick={() => setModal(true)} className="btn-primary"><i className="fa fa-plus" /> New Cost Entry</button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="card card-body !py-4"><p className="text-xs text-slate-500">Bills</p><p className="text-2xl font-bold">{total}</p></div>
+        <div className="card card-body !py-4"><p className="text-xs text-slate-500">Cost Entries</p><p className="text-2xl font-bold">{total}</p></div>
         <div className="card card-body !py-4"><p className="text-xs text-slate-500">Outstanding (this page)</p><p className="text-xl font-bold text-red-600">{money(totalOutstanding)}</p></div>
         <div className="card card-body !py-4"><p className="text-xs text-slate-500">Status Filter</p><p className="text-xl font-bold capitalize">{status || "all"}</p></div>
       </div>
 
       <div className="card">
         <div className="card-header flex-wrap gap-3">
-          <SearchBar value={search} onChange={setSearch} placeholder="Search vendor, bill, booking..." />
+          <SearchBar value={search} onChange={setSearch} placeholder="Search vendor, tax invoice, booking..." />
           <select className="input w-36" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All</option>
             <option value="open">Open</option>
@@ -361,22 +422,22 @@ export default function VendorBillsPage() {
             <option value="paid">Paid</option>
             <option value="void">Void</option>
           </select>
-          <span className="text-sm text-slate-500 ml-auto">{total} bill{total !== 1 ? "s" : ""}</span>
+          <span className="text-sm text-slate-500 ml-auto">{total} entr{total !== 1 ? "ies" : "y"}</span>
         </div>
         {isLoading ? <div className="p-8"><PageLoader /></div> : bills.length === 0 ? (
-          <Empty icon="fa-file-invoice-dollar" message="No vendor bills found" action={<button onClick={() => setModal(true)} className="btn-primary">Create first bill</button>} />
+          <Empty icon="fa-file-invoice-dollar" message="No vendor cost entries found" action={<button onClick={() => setModal(true)} className="btn-primary">Create first entry</button>} />
         ) : (
           <>
             <div className="table-wrapper">
               <table className="table">
-                <thead><tr><th>Bill #</th><th>Bill / Due</th><th>Vendor</th><th>Booking</th><th>Total</th><th>Paid</th><th>Balance</th><th className="text-right">Actions</th></tr></thead>
+                <thead><tr><th>Entry #</th><th>Date</th><th>Vendor</th><th>Booking</th><th>Total Cost</th><th>Paid</th><th>Balance</th><th className="text-right">Actions</th></tr></thead>
                 <tbody>
                   {bills.map((bill) => (
                     <tr key={bill._id}>
                       <td><Link to={`/vendor-bills/${bill._id}`} className="font-mono text-xs text-brand-600 font-medium hover:underline">{bill.billNumber}</Link>{bill.vendorInvoiceNumber && <p className="text-xs text-slate-400">{bill.vendorInvoiceNumber}</p>}</td>
                       <td className="text-sm text-slate-500">
                         <p>{bill.billDate}</p>
-                        <p className="text-xs text-slate-400">Due {bill.dueDate || bill.billDate}</p>
+                        <p className="text-xs text-slate-400">{bill.taxInvoiceSlip?.url ? "Tax invoice uploaded" : "Tax invoice pending"}</p>
                       </td>
                       <td><p className="font-medium text-slate-800">{bill.vendor?.name || bill.vendor?.company || "-"}</p>{bill.vendor?.company && <p className="text-xs text-slate-400">{bill.vendor.company}</p>}</td>
                       <td className="font-mono text-xs text-slate-500">{bill.bookingId || "-"}</td>
@@ -403,10 +464,10 @@ export default function VendorBillsPage() {
       {payBill && <PaymentModal bill={payBill} onClose={() => setPayBill(null)} onSaved={() => { setPayBill(null); refresh(); }} />}
       <ConfirmModal
         open={!!voidBill}
-        title="Void Vendor Bill"
-        message={`Void bill ${voidBill?.billNumber}? Posted payments must be voided first.`}
-        onConfirm={() => voidMutation.mutate({ id: voidBill._id, data: { notes: "Voided from Vendor Bills page" } }, {
-          onSuccess: () => { toast.success("Vendor bill voided"); setVoidBill(null); },
+        title="Void Vendor Cost Entry"
+        message={`Void entry ${voidBill?.billNumber}? Posted payments must be voided first.`}
+        onConfirm={() => voidMutation.mutate({ id: voidBill._id, data: { notes: "Voided from Vendor Costs page" } }, {
+          onSuccess: () => { toast.success("Vendor cost entry voided"); setVoidBill(null); },
           onError: (err) => notifyError(err),
         })}
         onCancel={() => setVoidBill(null)}

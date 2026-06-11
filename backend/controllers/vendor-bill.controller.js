@@ -14,6 +14,17 @@ async function generateBillNumber() {
 
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+function cleanSlip(slip = {}) {
+  return slip && slip.url
+    ? {
+        url: String(slip.url || "").trim(),
+        fileName: String(slip.fileName || "").trim(),
+        mimeType: String(slip.mimeType || "").trim(),
+        size: Number(slip.size) || 0,
+      }
+    : { url: "", fileName: "", mimeType: "", size: 0 };
+}
+
 const toDateOnly = (value) => {
   if (!value) return "";
   const d = new Date(value);
@@ -145,6 +156,7 @@ export const createVendorBill = async (req, res) => {
       subtotal,
       taxAmount,
       total,
+      taxInvoiceSlip: cleanSlip(req.body.taxInvoiceSlip),
       amountPaid,
       balance,
       currency: String(req.body.currency || "Rs.").trim(),
@@ -251,6 +263,7 @@ export const updateVendorBill = async (req, res) => {
     bill.subtotal = subtotal;
     bill.taxAmount = taxAmount;
     bill.total = total;
+    bill.taxInvoiceSlip = cleanSlip(req.body.taxInvoiceSlip ?? bill.taxInvoiceSlip);
     bill.currency = String(req.body.currency ?? bill.currency ?? "Rs.").trim();
     bill.notes = String(req.body.notes ?? bill.notes ?? "").trim();
     await bill.save();
@@ -285,6 +298,28 @@ export const updateVendorBill = async (req, res) => {
   } catch (error) {
     console.error("updateVendorBill error:", error);
     return res.status(400).json({ success: false, message: "Failed to update vendor bill.", data: null });
+  }
+};
+
+export const uploadVendorTaxInvoiceSlip = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded.", data: null });
+    }
+    const url = `/uploads/vendor-tax-invoices/${req.file.filename}`;
+    return res.status(201).json({
+      success: true,
+      message: "Vendor tax invoice uploaded.",
+      data: {
+        url,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+      },
+    });
+  } catch (error) {
+    console.error("uploadVendorTaxInvoiceSlip error:", error);
+    return res.status(500).json({ success: false, message: "Failed to upload vendor tax invoice.", data: null });
   }
 };
 

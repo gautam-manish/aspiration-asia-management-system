@@ -22,7 +22,7 @@ const NAV_GROUPS = [
       { to: "/invoices",         icon: "fa-file-invoice",   label: "Invoices", roles: ["admin", "sales", "accountant"] },
       { to: "/customer-payments", icon: "fa-money-bill-wave", label: "Customer Payments", roles: ["admin", "accountant"] },
       { to: "/ar-aging",        icon: "fa-clock",          label: "AR Aging", roles: ["admin", "accountant"] },
-      { to: "/vendor-bills",    icon: "fa-file-invoice-dollar", label: "Vendor Bills", roles: ["admin", "accountant"] },
+      { to: "/vendor-bills",    icon: "fa-file-invoice-dollar", label: "Vendor Costs", roles: ["admin", "accountant"] },
       { to: "/vendor-payments", icon: "fa-money-check-alt", label: "Vendor Payments", roles: ["admin", "accountant"] },
       { to: "/ap-aging",        icon: "fa-business-time",  label: "AP Aging", roles: ["admin", "accountant"] },
       { to: "/booking-profitability", icon: "fa-chart-pie", label: "Profitability", roles: ["admin", "accountant"] },

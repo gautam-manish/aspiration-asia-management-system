@@ -1,6 +1,7 @@
 import CustomerPayment from "../models/customer-payment.model.js";
 import Invoice from "../models/invoice.model.js";
 import { postCustomerPaymentJournal, reverseJournalEntry } from "./journal.service.js";
+import { resolveBookingId } from "../utils/bookingRef.js";
 
 const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -89,6 +90,14 @@ export async function upsertLegacyCustomerPayment(payload, user) {
     status: "posted",
     notes: String(payload.notes || "").trim(),
   };
+  if (!data.bookingId) {
+    throw new Error("Booking ID is required for synced customer payments.");
+  }
+  const bookingRef = await resolveBookingId(data.bookingId);
+  if (bookingRef.error) {
+    throw new Error(bookingRef.error);
+  }
+  data.bookingId = bookingRef.bookingId;
 
   let payment = await CustomerPayment.findOne({ source: data.source, sourceRef: data.sourceRef });
   if (invoice) {
@@ -163,6 +172,7 @@ export async function syncSalesRecordCustomerPayments(record, user) {
       sourceRef,
       invoice,
       invoiceNumber: record.invoiceNumber,
+      bookingId: record.bookingId || invoice?.bookingId || "",
       customer: {
         name: record.clientName,
         email: record.email,
@@ -240,6 +250,7 @@ export async function syncPurchaseRecordCredit(record, transaction, user) {
       phone: record.debtorPhone,
       address: record.debtorAddress,
     },
+    bookingId: transaction.bookingId || "",
     paymentDate: transaction.date,
     amount: transaction.amount,
     method: transaction.bank && transaction.bank !== "Cash" ? "bank" : "cash",

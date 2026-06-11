@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { purchaseRecordAPI } from "../../api";
+import { bookingAPI, purchaseRecordAPI } from "../../api";
 import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
 import { usePurchaseRecord, useBankAccounts } from "../../hooks/useApiQueries";
@@ -21,8 +21,9 @@ export default function PurchaseRecordDetailPage() {
   const [pdfFrom,    setPdfFrom]    = useState("");
   const [pdfTo,      setPdfTo]      = useState("");
   const [pdfFiscal,  setPdfFiscal]  = useState("");
-  const [txn,        setTxn]        = useState({ date: "", refNo: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
+  const [txn,        setTxn]        = useState({ date: "", refNo: "", bookingId: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
   const [saving,     setSaving]     = useState(false);
+  const [bookingLookup, setBookingLookup] = useState(false);
 
   const qc = useQueryClient();
   const { data: recordData, isLoading: recordLoading, error: recordError } = usePurchaseRecord(id);
@@ -37,8 +38,29 @@ export default function PurchaseRecordDetailPage() {
   const setT = (k, v) => setTxn((t) => ({ ...t, [k]: v }));
   const selectedBank = bankList.find((b) => b.bankName === txn.bank);
 
+  const fetchBooking = async () => {
+    const bookingId = (txn.bookingId || "").trim();
+    if (!bookingId) { toast.error("Booking ID required"); return; }
+    setBookingLookup(true);
+    try {
+      const { data } = await bookingAPI.getByQueryId(bookingId);
+      const booking = data?.data || {};
+      setTxn((t) => ({
+        ...t,
+        bookingId: booking.queryId || bookingId,
+        clientName: t.clientName || booking.clientName || "",
+      }));
+      toast.success(`Booking ${booking.queryId || bookingId} loaded`);
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setBookingLookup(false);
+    }
+  };
+
   const handleAddTxn = async (e) => {
     e.preventDefault();
+    if (!txn.bookingId.trim()) { toast.error("Booking ID required"); return; }
     if (!txn.date)   { toast.error("Date required"); return; }
     if (!txn.amount || Number(txn.amount) <= 0) { toast.error("Amount must be > 0"); return; }
     if (txn.type === "dr" && !txn.bank) { toast.error("Select a bank account for debit entry"); return; }
@@ -55,7 +77,7 @@ export default function PurchaseRecordDetailPage() {
       }
       toast.success("Transaction added ✓");
       setAddModal(false);
-      setTxn({ date: "", refNo: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
+      setTxn({ date: "", refNo: "", bookingId: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
       loadRecord();
       qc.invalidateQueries({ queryKey: ["purchase-records"] });
       qc.invalidateQueries({ queryKey: ["customer-payments"] });
@@ -84,6 +106,7 @@ export default function PurchaseRecordDetailPage() {
     // Description cell — shows description / clientName / bank stacked vertically.
     const descCell = (t) => {
       const lines = [];
+      if (t.bookingId) lines.push(`<div style="font-size:11px;color:#2563eb;font-family:monospace;">Booking: ${t.bookingId}</div>`);
       lines.push(t.description ? `<div>${t.description}</div>` : `<div>—</div>`);
       if (t.clientName) lines.push(`<div style="font-size:11px;color:#475569;">${t.clientName}</div>`);
       if (t.bank)       lines.push(`<div style="font-size:11px;color:#475569;">${t.bank}</div>`);
@@ -277,11 +300,11 @@ export default function PurchaseRecordDetailPage() {
         <div className="table-wrapper">
           <table className="table">
             <thead>
-              <tr><th>Date</th><th>Ref / Voucher</th><th>Description</th><th className="text-right">Debit (DR)</th><th className="text-right">Credit (CR)</th><th className="text-right">Balance</th></tr>
+              <tr><th>Date</th><th>Ref / Voucher</th><th>Booking</th><th>Description</th><th className="text-right">Debit (DR)</th><th className="text-right">Credit (CR)</th><th className="text-right">Balance</th></tr>
             </thead>
             <tbody>
               <tr className="bg-slate-50">
-                <td colSpan={5} className="font-semibold text-slate-500 text-xs">Opening Balance</td>
+                <td colSpan={6} className="font-semibold text-slate-500 text-xs">Opening Balance</td>
                 <td className="text-right font-bold text-sm">Rs. {fmt(record.openingBalance)} DR</td>
               </tr>
               {sortedTxns.map((t, i) => {
@@ -293,6 +316,7 @@ export default function PurchaseRecordDetailPage() {
                   <tr key={t._id || i}>
                     <td className="text-sm text-slate-600">{t.date}</td>
                     <td className="font-mono text-xs text-slate-500">{t.refNo || "—"}</td>
+                    <td className="font-mono text-xs text-brand-600">{t.bookingId || "—"}</td>
                     <td className="text-sm text-slate-700">{t.description || "—"}</td>
                     <td className="text-right font-medium text-red-600 text-sm">{dr > 0 ? `Rs. ${fmt(dr)}` : "—"}</td>
                     <td className="text-right font-medium text-green-600 text-sm">{cr > 0 ? `Rs. ${fmt(cr)}` : "—"}</td>
@@ -333,6 +357,14 @@ export default function PurchaseRecordDetailPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Field label="Date *"><input className="input" type="date" value={txn.date} onChange={(e) => setT("date", e.target.value)} required /></Field>
                   <Field label="Ref / Voucher No."><input className="input" value={txn.refNo} onChange={(e) => setT("refNo", e.target.value)} /></Field>
+                  <Field label="Booking ID *">
+                    <div className="flex gap-2">
+                      <input className="input flex-1" value={txn.bookingId} onChange={(e) => setT("bookingId", e.target.value)} placeholder="ASA..." required />
+                      <button type="button" onClick={fetchBooking} disabled={bookingLookup || !txn.bookingId.trim()} className="btn-secondary text-xs whitespace-nowrap">
+                        {bookingLookup ? "Fetching…" : <><i className="fa fa-search" /> Fetch</>}
+                      </button>
+                    </div>
+                  </Field>
                   <Field label="Client Name"><input className="input" value={txn.clientName} onChange={(e) => setT("clientName", e.target.value)} /></Field>
                   <Field label="Amount (Rs.) *"><input className="input" type="number" min="0.01" step="0.01" value={txn.amount} onChange={(e) => setT("amount", e.target.value)} required /></Field>
                   <Field label="Description" className="col-span-2"><textarea className="input min-h-[90px]" value={txn.description} onChange={(e) => setT("description", e.target.value)} /></Field>

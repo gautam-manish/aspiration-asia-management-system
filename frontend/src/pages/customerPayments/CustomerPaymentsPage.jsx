@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
+import { resolveUploadUrl } from "../../api";
 import { notifyError } from "../../utils/helpers";
 import { ConfirmModal, Empty, PageLoader, Pagination, SearchBar } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
@@ -167,7 +168,7 @@ export default function CustomerPaymentsPage() {
                       <td>
                         <div className="flex justify-end gap-1">
                           {p.slip?.url && (
-                            <a href={p.slip.url} target="_blank" rel="noreferrer" className="btn-ghost text-xs py-1 px-2">
+                            <a href={resolveUploadUrl(p.slip.url)} target="_blank" rel="noreferrer" className="btn-ghost text-xs py-1 px-2">
                               <i className="fa fa-paperclip" />
                             </a>
                           )}

@@ -6,7 +6,8 @@ import { ADVANCE_ROOT } from "../middleware/upload.middleware.js";
 import escapeRegex from "../utils/escapeRegex.js";
 import CustomerPayment from "../models/customer-payment.model.js";
 import { createCustomerPaymentFromInvoiceAdvance } from "./customer-payment.controller.js";
-import { postInvoiceJournal, reverseJournalEntry } from "../services/journal.service.js";
+import { postCustomerPaymentJournal, postInvoiceJournal, reverseJournalEntry } from "../services/journal.service.js";
+import { resolveBookingId } from "../utils/bookingRef.js";
 
 // ─────────────────────────────────────────
 // Helper: generate a unique 8-digit ASA invoice number
@@ -160,6 +161,7 @@ async function syncSalesRecordHeaderFromInvoice(invoice) {
   if (!record) return;
 
   record.clientName = invoice.billTo?.name || record.clientName || "(Unknown)";
+  record.bookingId = invoice.bookingId || record.bookingId || "";
   record.address = invoice.billTo?.address || "";
   record.phone = invoice.billTo?.mobile || "";
   record.email = String(invoice.billTo?.email || "").toLowerCase();
@@ -234,6 +236,9 @@ export const createInvoice = async (req, res) => {
   try {
     let payload = { ...req.body };
     if (payload.customerId === "") payload.customerId = null;
+    const bookingRef = await resolveBookingId(payload.bookingId);
+    if (bookingRef.error) return res.status(400).json({ success: false, message: bookingRef.error, data: null });
+    payload.bookingId = bookingRef.bookingId;
 
     // Always assign a fresh, unique ASA-prefixed invoice number on the server
     // — even if the client suggested one — to avoid collisions and bypassing rules.
@@ -350,6 +355,11 @@ export const updateInvoice = async (req, res) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
     if (updates.customerId === "") updates.customerId = null;
+    if (updates.bookingId !== undefined) {
+      const bookingRef = await resolveBookingId(updates.bookingId);
+      if (bookingRef.error) return res.status(400).json({ success: false, message: bookingRef.error, data: null });
+      updates.bookingId = bookingRef.bookingId;
+    }
 
     if (updates.invoiceDate !== undefined || updates.paymentTermsDays !== undefined || updates.dueDate !== undefined) {
       const existing = await Invoice.findById(req.params.id)
@@ -371,6 +381,20 @@ export const updateInvoice = async (req, res) => {
     );
     if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
     await syncSalesRecordHeaderFromInvoice(invoice);
+    const linkedPayments = await CustomerPayment.find({
+      status: "posted",
+      $or: [
+        { invoiceId: invoice._id },
+        { invoiceNumber: String(invoice.invoiceNumber || "").toUpperCase() },
+      ],
+    });
+    for (const payment of linkedPayments) {
+      if (payment.bookingId !== invoice.bookingId) {
+        payment.bookingId = invoice.bookingId;
+        await payment.save();
+        await postCustomerPaymentJournal(payment, req.user);
+      }
+    }
     const enriched = await attachPaymentSummary(invoice);
     await postInvoiceJournal(invoice, req.user);
     res.status(200).json({ success: true, message: "Invoice updated successfully", data: enriched });
@@ -516,11 +540,13 @@ export const addAdvancePayment = async (req, res) => {
         };
         const existing = await SalesRecord.findOne({ invoiceNumber });
         if (existing) {
+          existing.bookingId = invoice.bookingId || existing.bookingId || "";
           existing.paymentEntries.push(paymentEntry);
           await existing.save(); // pre-save hook recomputes received + outstanding
         } else {
           const sr = new SalesRecord({
             invoiceNumber,
+            bookingId:   invoice.bookingId || "",
             clientName:  invoice.billTo?.name    || "(Unknown)",
             address:     invoice.billTo?.address || "",
             phone:       invoice.billTo?.mobile  || "",

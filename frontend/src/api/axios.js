@@ -17,6 +17,11 @@ api.interceptors.request.use((config) => {
 // Response interceptor — handle session expiry without breaking page state
 let isRedirecting = false;
 
+const tokenFromHeader = (value) => {
+  const match = String(value || "").match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : "";
+};
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -32,6 +37,11 @@ api.interceptors.response.use(
     if (err?.response?.status === 401 && !isLoginRequest) {
       // Mark so page-level catch blocks can skip noisy toasts
       err.__handled = true;
+      const requestToken = tokenFromHeader(err?.config?.headers?.Authorization);
+      const currentToken = localStorage.getItem("token") || "";
+      if (requestToken && currentToken && requestToken !== currentToken) {
+        return Promise.reject(err);
+      }
       // Avoid redirect loops if multiple 401s land at once
       if (!isRedirecting) {
         isRedirecting = true;

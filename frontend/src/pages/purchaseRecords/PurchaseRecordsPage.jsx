@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { purchaseRecordAPI } from "../../api";
+import { bookingAPI, purchaseRecordAPI } from "../../api";
 import { notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
@@ -18,8 +18,9 @@ function AddModal({ onClose, onSaved }) {
   const [query,    setQuery]    = useState("");
   const [selected, setSelected] = useState(null);
   const [showDrop, setShowDrop] = useState(false);
-  const [txn,      setTxn]      = useState({ date: "", refNo: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
+  const [txn,      setTxn]      = useState({ date: "", refNo: "", bookingId: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
   const [loading,  setLoading]  = useState(false);
+  const [bookingLookup, setBookingLookup] = useState(false);
   // Holds the existing PurchaseRecord doc when one is found for the selected vendor.
   // null = unknown, false = no existing account (new ledger), object = existing.
   const [existing, setExisting] = useState(null);
@@ -63,10 +64,31 @@ function AddModal({ onClose, onSaved }) {
 
   const setT = (k, v) => setTxn((t) => ({ ...t, [k]: v }));
 
+  const fetchBooking = async () => {
+    const bookingId = (txn.bookingId || "").trim();
+    if (!bookingId) { toast.error("Booking ID required"); return; }
+    setBookingLookup(true);
+    try {
+      const { data } = await bookingAPI.getByQueryId(bookingId);
+      const booking = data?.data || {};
+      setTxn((t) => ({
+        ...t,
+        bookingId: booking.queryId || bookingId,
+        clientName: t.clientName || booking.clientName || "",
+      }));
+      toast.success(`Booking ${booking.queryId || bookingId} loaded`);
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setBookingLookup(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selected) { toast.error("Select a creditor/vendor from the dropdown"); return; }
     const debtorNameClean = selected.contactPerson;
+    if (!txn.bookingId.trim()) { toast.error("Booking ID required"); return; }
     if (!txn.date)   { toast.error("Transaction date required"); return; }
     if (!txn.amount || Number(txn.amount) <= 0) { toast.error("Amount must be > 0"); return; }
     if (txn.type === "dr" && !txn.bank) { toast.error("Select a bank account for debit entry"); return; }
@@ -206,6 +228,14 @@ function AddModal({ onClose, onSaved }) {
                 </Field>
                 <Field label="Ref / Voucher No.">
                   <input className="input" value={txn.refNo} onChange={(e) => setT("refNo", e.target.value)} />
+                </Field>
+                <Field label="Booking ID *">
+                  <div className="flex gap-2">
+                    <input className="input flex-1" value={txn.bookingId} onChange={(e) => setT("bookingId", e.target.value)} placeholder="ASA..." required />
+                    <button type="button" onClick={fetchBooking} disabled={bookingLookup || !txn.bookingId.trim()} className="btn-secondary text-xs whitespace-nowrap">
+                      {bookingLookup ? "Fetching…" : <><i className="fa fa-search" /> Fetch</>}
+                    </button>
+                  </div>
                 </Field>
                 <Field label="Client Name">
                   <input className="input" value={txn.clientName} onChange={(e) => setT("clientName", e.target.value)} />

@@ -25,8 +25,10 @@ export function AuthProvider({ children }) {
 
   const verify = useCallback(async () => {
     if (!token) { setLoading(false); return; }
+    const verifyingToken = token;
     try {
-      const { data } = await authAPI.verify(token);
+      const { data } = await authAPI.verify(verifyingToken);
+      if (localStorage.getItem("token") !== verifyingToken) return;
       if (data?.user) {
         setUser(data.user);
         try { localStorage.setItem("user", JSON.stringify(data.user)); } catch { /* ignore */ }
@@ -34,7 +36,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       // Only nuke the session on an explicit 401. Network blips, 5xx, CORS
       // hiccups, etc. should leave the cached session intact.
-      if (err?.response?.status === 401) {
+      if (err?.response?.status === 401 && localStorage.getItem("token") === verifyingToken) {
         setToken(null);
         setUser(null);
         localStorage.removeItem("token");

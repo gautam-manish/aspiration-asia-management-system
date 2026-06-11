@@ -45,6 +45,12 @@ const salesRecordSchema = new mongoose.Schema(
       trim:      true,
       uppercase: true,
     },
+    bookingId: {
+      type:    String,
+      trim:    true,
+      default: "",
+      index:   true,
+    },
 
     // ── Client / Agent ──────────────────────────
     clientName: {

@@ -16,6 +16,11 @@ const transactionSchema = new mongoose.Schema(
       trim:    true,
       default: "",
     },
+    bookingId: {
+      type:    String,
+      trim:    true,
+      default: "",
+    },
     clientName: {
       type:    String,   // Guest / Client name on bill
       trim:    true,
@@ -146,5 +151,6 @@ const PurchaseRecord = mongoose.model("PurchaseRecord", purchaseRecordSchema);
 // ── Indexes ──────────────────────────────────────────────────────────────
 // debtorName is already unique-indexed via the field declaration.
 purchaseRecordSchema.index({ createdAt: -1 });
+purchaseRecordSchema.index({ "transactions.bookingId": 1 });
 
 export default PurchaseRecord;

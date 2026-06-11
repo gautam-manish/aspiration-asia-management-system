@@ -1,5 +1,24 @@
 import api from "./axios";
 
+export const resolveUploadUrl = (url) => {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  if (/^(https?:)?\/\//i.test(value) || /^data:/i.test(value) || /^blob:/i.test(value)) {
+    return value;
+  }
+
+  const configuredOrigin = String(import.meta.env.VITE_UPLOAD_ORIGIN || import.meta.env.VITE_API_ORIGIN || "").trim();
+  const isLocalFrontend = typeof window !== "undefined" && ["3000", "4173", "5173"].includes(window.location.port);
+  const uploadOrigin = configuredOrigin || (isLocalFrontend ? `${window.location.protocol}//${window.location.hostname}:5000` : "");
+  if (!uploadOrigin) return value;
+
+  try {
+    return new URL(value, uploadOrigin.endsWith("/") ? uploadOrigin : `${uploadOrigin}/`).toString();
+  } catch {
+    return value;
+  }
+};
+
 // ── Auth ────────────────────────────────────────────────────────────
 export const authAPI = {
   login:  (data)  => api.post("/auth/login", data),

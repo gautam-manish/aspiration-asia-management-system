@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { salesRecordAPI, invoiceAPI } from "../../api";
+import { salesRecordAPI, invoiceAPI, resolveUploadUrl } from "../../api";
 import { notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
@@ -75,7 +75,7 @@ export function SlipField({ slip, onChange }) {
     return (
       <div className="flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
         <i className={`fa ${/^application\/pdf/.test(slip.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
-        <a href={slip.url} target="_blank" rel="noreferrer" className="font-medium text-brand-700 truncate hover:underline" title={slip.fileName}>
+        <a href={resolveUploadUrl(slip.url)} target="_blank" rel="noreferrer" className="font-medium text-brand-700 truncate hover:underline" title={slip.fileName}>
           {slip.fileName || "Slip"}
         </a>
         <span className="text-slate-400 ml-auto whitespace-nowrap">{fmtSize(slip.size)}</span>
@@ -103,7 +103,7 @@ export function SlipField({ slip, onChange }) {
 
 function SalesModal({ onClose, onSaved }) {
   const qc = useQueryClient();
-  const [form, setForm]     = useState({ invoiceNumber: "", clientName: "", address: "", phone: "", email: "", totalAmount: "" });
+  const [form, setForm]     = useState({ invoiceNumber: "", bookingId: "", clientName: "", address: "", phone: "", email: "", totalAmount: "" });
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
@@ -124,6 +124,7 @@ function SalesModal({ onClose, onSaved }) {
         setExistingId(r._id);
         setForm({
           invoiceNumber: r.invoiceNumber || num,
+          bookingId:     r.bookingId || "",
           clientName:    r.clientName || "",
           address:       r.address    || "",
           phone:         r.phone      || "",
@@ -150,6 +151,7 @@ function SalesModal({ onClose, onSaved }) {
       setForm((f) => ({
         ...f,
         invoiceNumber: inv.invoiceNumber || num,
+        bookingId:     inv.bookingId || f.bookingId,
         clientName:    inv.billTo?.name    || f.clientName,
         address:       inv.billTo?.address || f.address,
         phone:         inv.billTo?.mobile  || f.phone,
@@ -174,6 +176,7 @@ function SalesModal({ onClose, onSaved }) {
   const handleSubmit = async (ev) => {
     ev.preventDefault();
     if (!form.invoiceNumber.trim()) { toast.error("Invoice number required"); return; }
+    if (!form.bookingId.trim())     { toast.error("Fetch an invoice with a booking before saving"); return; }
     if (!form.clientName.trim())    { toast.error("Client name required"); return; }
     setLoading(true);
     try {
@@ -230,6 +233,11 @@ function SalesModal({ onClose, onSaved }) {
                   </button>
                 </div>
               </Field>
+              {form.bookingId && (
+                <p className="text-xs text-slate-400 mt-1">
+                  Booking ID: <span className="font-mono">{form.bookingId}</span>
+                </p>
+              )}
             </div>
 
             {/* Client */}
@@ -384,6 +392,7 @@ export default function SalesRecordsPage() {
                 <thead>
                   <tr>
                     <th>Invoice No.</th>
+                    <th>Booking</th>
                     <th>Client</th>
                     <th>Total</th>
                     <th>Received</th>
@@ -396,6 +405,7 @@ export default function SalesRecordsPage() {
                   {records.map((r) => (
                     <tr key={r._id}>
                       <td><span className="font-mono text-xs bg-blue-50 text-brand-600 border border-blue-100 px-2 py-0.5 rounded">{r.invoiceNumber}</span></td>
+                      <td className="font-mono text-xs text-slate-500">{r.bookingId || "-"}</td>
                       <td>
                         <p className="font-medium text-slate-800">{r.clientName}</p>
                         {r.email && <p className="text-xs text-slate-400">{r.email}</p>}

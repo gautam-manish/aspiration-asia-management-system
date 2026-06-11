@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { notifyError } from "../../utils/helpers";
 import { useOfficeExpense, useOfficeExpenseMutations } from "../../hooks/useApiQueries";
 import { ExpenseModal } from "./OfficeExpensesPage";
 import { useAuth } from "../../context/AuthContext";
+import { resolveUploadUrl } from "../../api";
 
 const money = (value) => `Rs. ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -77,7 +78,7 @@ export default function OfficeExpenseDetailPage() {
           <Info label="Reference Code">{expense.referenceCode}</Info>
           <Info label="Bank Account">{expense.bankAccountId}</Info>
           <Info label="Notes"><span className="whitespace-pre-wrap">{expense.notes}</span></Info>
-          {expense.slip?.url && <Info label="Slip"><Link to={expense.slip.url} target="_blank" className="text-brand-600 hover:underline">{expense.slip.fileName || "View slip"}</Link></Info>}
+          {expense.slip?.url && <Info label="Slip"><a href={resolveUploadUrl(expense.slip.url)} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">{expense.slip.fileName || "View slip"}</a></Info>}
         </div>
       </div>
 

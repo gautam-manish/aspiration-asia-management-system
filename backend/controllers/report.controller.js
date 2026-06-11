@@ -208,32 +208,51 @@ export const getBookingProfitability = async (req, res) => {
 
     const invoiceFilter = {};
     const billFilter = { status: { $ne: "void" } };
+    const purchaseFilter = {
+      transactions: {
+        $elemMatch: {
+          type: "cr",
+          bookingId: { $exists: true, $ne: "" },
+        },
+      },
+    };
 
     if (from || to) {
       invoiceFilter.invoiceDate = {};
       billFilter.billDate = {};
+      purchaseFilter.transactions.$elemMatch.date = {};
       if (from) {
         invoiceFilter.invoiceDate.$gte = String(from);
         billFilter.billDate.$gte = String(from);
+        purchaseFilter.transactions.$elemMatch.date.$gte = String(from);
       }
       if (to) {
         invoiceFilter.invoiceDate.$lte = String(to);
         billFilter.billDate.$lte = String(to);
+        purchaseFilter.transactions.$elemMatch.date.$lte = String(to);
       }
     }
 
-    const [invoices, vendorBills] = await Promise.all([
+    const [invoices, vendorBills, purchaseRecords] = await Promise.all([
       Invoice.find(invoiceFilter)
         .select("invoiceNumber invoiceDate bookingId customerId billTo total currency")
         .lean(),
       VendorBill.find(billFilter)
         .select("billNumber billDate bookingId vendor total currency status")
         .lean(),
+      PurchaseRecord.find(purchaseFilter)
+        .select("debtorName transactions")
+        .lean(),
     ]);
+    const purchaseCostRows = purchaseRecords.flatMap((record) => (record.transactions || [])
+      .filter((txn) => txn.type === "cr" && String(txn.bookingId || "").trim())
+      .filter((txn) => (!from || txn.date >= from) && (!to || txn.date <= to))
+      .map((txn) => ({ record, txn })));
 
     const bookingIds = Array.from(new Set([
       ...invoices.map((i) => String(i.bookingId || "").trim()).filter(Boolean),
       ...vendorBills.map((b) => String(b.bookingId || "").trim()).filter(Boolean),
+      ...purchaseCostRows.map(({ txn }) => String(txn.bookingId || "").trim()).filter(Boolean),
     ]));
 
     const bookings = bookingIds.length
@@ -264,8 +283,10 @@ export const getBookingProfitability = async (req, res) => {
           marginPercent: 0,
           invoiceCount: 0,
           vendorBillCount: 0,
+          purchaseRecordCostCount: 0,
           invoiceNumbers: [],
           vendorBillNumbers: [],
+          purchaseRecordRefs: [],
           currency: "Rs.",
           month: "",
         });
@@ -301,6 +322,17 @@ export const getBookingProfitability = async (req, res) => {
       if (!row.month && billDate) row.month = billDate.slice(0, 7);
     }
 
+    for (const { record, txn } of purchaseCostRows) {
+      const bookingId = String(txn.bookingId || "").trim();
+      const row = ensureRow(bookingId);
+      row.directCost += Number(txn.amount) || 0;
+      row.purchaseRecordCostCount += 1;
+      if (txn.refNo) row.purchaseRecordRefs.push(txn.refNo);
+      else if (record.debtorName) row.purchaseRecordRefs.push(record.debtorName);
+      const txnDate = toDateOnly(txn.date);
+      if (!row.month && txnDate) row.month = txnDate.slice(0, 7);
+    }
+
     let rows = Array.from(rowMap.values()).map((row) => {
       const revenue = roundMoney(row.revenue);
       const directCost = roundMoney(row.directCost);
@@ -325,6 +357,7 @@ export const getBookingProfitability = async (req, res) => {
           row.destination,
           ...(row.invoiceNumbers || []),
           ...(row.vendorBillNumbers || []),
+          ...(row.purchaseRecordRefs || []),
         ].some((value) => String(value || "").toLowerCase().includes(q)),
       );
     }
@@ -470,7 +503,7 @@ export const getCustomerLedger = async (req, res) => {
           partyEmail: record.debtorEmail || "",
           reference: txn.refNo || "",
           secondaryReference: "",
-          bookingId: "",
+          bookingId: txn.bookingId || "",
           type: "purchase-record-debit",
           description: txn.description || "Purchase record debit",
           debit: roundMoney(txn.amount),
@@ -644,31 +677,49 @@ export const getProfitLoss = async (req, res) => {
     const invoiceFilter = {};
     const billFilter = { status: { $ne: "void" } };
     const expenseFilter = { status: "posted" };
+    const purchaseFilter = {
+      transactions: {
+        $elemMatch: {
+          type: "cr",
+          bookingId: { $exists: true, $ne: "" },
+        },
+      },
+    };
 
     if (from || to) {
       invoiceFilter.invoiceDate = {};
       billFilter.billDate = {};
       expenseFilter.expenseDate = {};
+      purchaseFilter.transactions.$elemMatch.date = {};
       if (from) {
         invoiceFilter.invoiceDate.$gte = String(from);
         billFilter.billDate.$gte = String(from);
         expenseFilter.expenseDate.$gte = String(from);
+        purchaseFilter.transactions.$elemMatch.date.$gte = String(from);
       }
       if (to) {
         invoiceFilter.invoiceDate.$lte = String(to);
         billFilter.billDate.$lte = String(to);
         expenseFilter.expenseDate.$lte = String(to);
+        purchaseFilter.transactions.$elemMatch.date.$lte = String(to);
       }
     }
 
-    const [invoices, vendorBills, officeExpenses] = await Promise.all([
+    const [invoices, vendorBills, officeExpenses, purchaseRecords] = await Promise.all([
       Invoice.find(invoiceFilter).select("invoiceNumber invoiceDate bookingId billTo total currency").lean(),
       VendorBill.find(billFilter).select("billNumber billDate bookingId vendor total currency").lean(),
       OfficeExpense.find(expenseFilter).select("expenseNumber expenseDate category paidTo description amount paymentMethod").lean(),
+      PurchaseRecord.find(purchaseFilter).select("transactions").lean(),
     ]);
+    const purchaseCostRows = purchaseRecords.flatMap((record) => (record.transactions || [])
+      .filter((txn) => txn.type === "cr" && String(txn.bookingId || "").trim())
+      .filter((txn) => (!from || txn.date >= from) && (!to || txn.date <= to)));
 
     const revenue = roundMoney(invoices.reduce((sum, inv) => sum + (Number(inv.total) || 0), 0));
-    const directCost = roundMoney(vendorBills.reduce((sum, bill) => sum + (Number(bill.total) || 0), 0));
+    const directCost = roundMoney(
+      vendorBills.reduce((sum, bill) => sum + (Number(bill.total) || 0), 0)
+      + purchaseCostRows.reduce((sum, txn) => sum + (Number(txn.amount) || 0), 0),
+    );
     const grossProfit = roundMoney(revenue - directCost);
     const operatingExpenses = roundMoney(officeExpenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0));
     const netProfit = roundMoney(grossProfit - operatingExpenses);
@@ -694,6 +745,7 @@ export const getProfitLoss = async (req, res) => {
     };
     for (const inv of invoices) ensureMonth(inv.invoiceDate).revenue += Number(inv.total) || 0;
     for (const bill of vendorBills) ensureMonth(bill.billDate).directCost += Number(bill.total) || 0;
+    for (const txn of purchaseCostRows) ensureMonth(txn.date).directCost += Number(txn.amount) || 0;
     for (const expense of officeExpenses) ensureMonth(expense.expenseDate).operatingExpenses += Number(expense.amount) || 0;
 
     const byMonth = Array.from(monthMap.values())
@@ -722,6 +774,7 @@ export const getProfitLoss = async (req, res) => {
         counts: {
           invoices: invoices.length,
           vendorBills: vendorBills.length,
+          purchaseRecordCosts: purchaseCostRows.length,
           officeExpenses: officeExpenses.length,
         },
         byExpenseCategory: Array.from(byExpenseCategory.values())

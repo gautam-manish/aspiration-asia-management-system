@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { salesRecordAPI } from "../../api";
+import { salesRecordAPI, resolveUploadUrl } from "../../api";
 import { formatDate, notifyError, numberToWords } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
 import { useSalesRecord } from "../../hooks/useApiQueries";
@@ -189,6 +189,7 @@ export default function SalesRecordDetailPage() {
           <div className="card-header"><h3 className="font-semibold text-slate-700">Invoice Reference</h3></div>
           <div className="card-body">
             <Row label="Invoice Number" value={<span className="font-mono text-brand-600">{record.invoiceNumber}</span>} />
+            <Row label="Booking ID" value={record.bookingId ? <span className="font-mono text-brand-600">{record.bookingId}</span> : "—"} />
             <Row label="Created"        value={formatDate(record.createdAt)} />
             <Row label="Last Updated"   value={formatDate(record.updatedAt)} />
           </div>
@@ -230,7 +231,7 @@ export default function SalesRecordDetailPage() {
                     <td className="text-slate-500 text-sm">{e.date || "—"}</td>
                     <td className="text-sm">
                       {e.slip?.url ? (
-                        <a href={e.slip.url} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline inline-flex items-center gap-1">
+                        <a href={resolveUploadUrl(e.slip.url)} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline inline-flex items-center gap-1">
                           <i className={`fa ${/^application\/pdf/.test(e.slip.mimeType) ? "fa-file-pdf" : "fa-file-image"}`} />
                           {e.slip.fileName || "View"}
                         </a>

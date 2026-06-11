@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { invoiceAPI } from "../../api";
+import { invoiceAPI, resolveUploadUrl } from "../../api";
 import { numberToWords, notifyError } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
 import AuditTrailPanel from "../../components/common/AuditTrailPanel";
@@ -126,7 +126,7 @@ function AddAdvanceModal({ invoice, onClose, onSaved }) {
               {slip?.url ? (
                 <div className="flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
                   <i className={`fa ${/^application\/pdf/.test(slip.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
-                  <a href={slip.url} target="_blank" rel="noreferrer" className="font-medium text-brand-700 truncate hover:underline" title={slip.fileName}>
+                  <a href={resolveUploadUrl(slip.url)} target="_blank" rel="noreferrer" className="font-medium text-brand-700 truncate hover:underline" title={slip.fileName}>
                     {slip.fileName || "Slip"}
                   </a>
                   <span className="text-slate-400 ml-auto whitespace-nowrap">{fmtSize(slip.size)}</span>
@@ -555,7 +555,7 @@ export default function InvoiceDetailPage() {
                       <td className="text-right font-semibold text-green-700">{cur} {fmt(p.amount)}</td>
                       <td>
                         {p.slip?.url ? (
-                          <a href={p.slip.url} target="_blank" rel="noreferrer" className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1">
+                          <a href={resolveUploadUrl(p.slip.url)} target="_blank" rel="noreferrer" className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1">
                             <i className={`fa ${/^application\/pdf/.test(p.slip.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
                             {p.slip.fileName || "View"}
                           </a>

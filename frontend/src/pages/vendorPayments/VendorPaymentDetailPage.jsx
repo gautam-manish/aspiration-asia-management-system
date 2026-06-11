@@ -69,8 +69,8 @@ function EditVendorPaymentModal({ payment, onClose, onSaved }) {
               </select>
             </Field>
             <Field label="Reference Code"><input className="input" value={form.referenceCode} onChange={(e) => set("referenceCode", e.target.value)} /></Field>
-            <Field label="Bill Number"><input className="input" value={form.billNumber} onChange={(e) => set("billNumber", e.target.value)} /></Field>
-            <Field label="Booking ID"><input className="input" value={form.bookingId} onChange={(e) => set("bookingId", e.target.value)} /></Field>
+            <Field label="Bill Number"><input className="input bg-slate-50" value={form.billNumber} readOnly /></Field>
+            <Field label="Booking ID"><input className="input bg-slate-50" value={form.bookingId} readOnly /></Field>
             <Field label="Vendor Name" required><input className="input" value={form.vendor.name} onChange={(e) => setVendor("name", e.target.value)} required /></Field>
             <Field label="Company"><input className="input" value={form.vendor.company} onChange={(e) => setVendor("company", e.target.value)} /></Field>
             <Field label="Email"><input className="input" type="email" value={form.vendor.email} onChange={(e) => setVendor("email", e.target.value)} /></Field>

@@ -26,6 +26,8 @@ const NATIONALITIES = [
 ];
 const ROOM_TYPES = ["Single Room","Double Room","DORM","Suite","Triple Room","Quard Room"];
 const MEAL_PLANS = ["EP","CP","MAP","AP","JP"];
+const generateConfirmationNumber = () => Math.floor(100000 + Math.random() * 900000).toString();
+const cleanConfirmationNumber = (value) => String(value || "").replace(/\D/g, "").slice(0, 6);
 
 // ─── Exact original PDF template ─────────────────────────────────────────────
 export function VoucherPDF({ v }) {
@@ -328,7 +330,7 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
       hotelEntries: [
         ...f.hotelEntries,
         {
-          confirmationNumber: Math.floor(10000000 + Math.random() * 90000000).toString(),
+          confirmationNumber: generateConfirmationNumber(),
           hotelName: "", hotelCity: "", hotelCountry: "",
           rooms: [{ roomCategory: "", noOfRooms: "", roomType: "" }],
           mealPlan: "",
@@ -486,7 +488,7 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <Field label="Confirmation Number" className="col-span-2">
-                      <input className="input" value={h.confirmationNumber} onChange={(e) => setHotel(i, "confirmationNumber", e.target.value)} />
+                      <input className="input font-mono font-bold text-brand-700" value={h.confirmationNumber} onChange={(e) => setHotel(i, "confirmationNumber", cleanConfirmationNumber(e.target.value))} maxLength={6} inputMode="numeric" />
                     </Field>
                     <Field label="Hotel Name" className="col-span-2">
                       <HotelSearchSelect

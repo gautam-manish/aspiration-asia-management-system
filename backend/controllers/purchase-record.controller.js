@@ -6,6 +6,7 @@ import CustomerPayment from "../models/customer-payment.model.js";
 import VendorPayment from "../models/vendor-payment.model.js";
 import OfficeExpense from "../models/office-expense.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
+import { resolveBookingId } from "../utils/bookingRef.js";
 import {
   syncPurchaseRecordCredit,
   voidPurchaseRecordCustomerPayments,
@@ -92,6 +93,13 @@ async function validatePurchaseTransactionBank(transaction) {
   }
 
   return null;
+}
+
+async function validatePurchaseTransactionBooking(transaction) {
+  const bookingRef = await resolveBookingId(transaction.bookingId);
+  if (bookingRef.error) return bookingRef;
+  transaction.bookingId = bookingRef.bookingId;
+  return bookingRef;
 }
 
 // ─────────────────────────────────────────────
@@ -259,6 +267,13 @@ export const createOrAddToPurchaseRecord = async (req, res) => {
         message: bankError,
       });
     }
+    const bookingRef = await validatePurchaseTransactionBooking(transaction);
+    if (bookingRef.error) {
+      return res.status(400).json({
+        success: false,
+        message: bookingRef.error,
+      });
+    }
 
     // ── Find Existing ───────────────────────
     let record = await PurchaseRecord.findOne({
@@ -286,6 +301,7 @@ export const createOrAddToPurchaseRecord = async (req, res) => {
     record.transactions.push({
       date: transaction.date || "",
       refNo: transaction.refNo || "",
+      bookingId: transaction.bookingId || "",
       clientName: transaction.clientName || "",
       description: transaction.description || "",
       amount: Number(transaction.amount || 0),
@@ -357,6 +373,13 @@ export const addTransaction = async (req, res) => {
         message: bankError,
       });
     }
+    const bookingRef = await validatePurchaseTransactionBooking(transaction);
+    if (bookingRef.error) {
+      return res.status(400).json({
+        success: false,
+        message: bookingRef.error,
+      });
+    }
 
     const record = await PurchaseRecord.findById(req.params.id);
 
@@ -370,6 +393,7 @@ export const addTransaction = async (req, res) => {
     record.transactions.push({
       date: transaction.date || "",
       refNo: transaction.refNo || "",
+      bookingId: transaction.bookingId || "",
       clientName: transaction.clientName || "",
       description: transaction.description || "",
       amount: Number(transaction.amount || 0),

@@ -10,6 +10,9 @@ import toast from "react-hot-toast";
 
 const EMPTY_ROOM = { roomCategory: "", noOfRooms: "", roomType: "" };
 
+const generateConfirmationNumber = () => Math.floor(100000 + Math.random() * 900000).toString();
+const cleanConfirmationNumber = (value) => String(value || "").replace(/\D/g, "").slice(0, 6);
+
 const EMPTY_HOTEL = {
   confirmationNumber:"", hotelName:"", hotelCity:"", hotelCountry:"",
   rooms: [{ ...EMPTY_ROOM }],
@@ -26,7 +29,7 @@ function VoucherModal({ onClose, onSaved }) {
     guestName:"", nationality:"", contactNumber:"", mealInstruction:"",
     wheelChair:"", arrivalFlightDetails:"", preferredFloor:"",
     pax:{ adults:0, childWithBed:0, childWithoutBed:0, childBelow5:0 },
-    hotels:[{ ...EMPTY_HOTEL }],
+    hotels:[{ ...EMPTY_HOTEL, confirmationNumber: generateConfirmationNumber() }],
   });
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
@@ -47,7 +50,7 @@ function VoucherModal({ onClose, onSaved }) {
     };
     return { ...f, hotels: list };
   });
-  const addHotel    = () => setForm((f) => ({ ...f, hotels: [...f.hotels, { ...EMPTY_HOTEL, rooms: [{ ...EMPTY_ROOM }] }] }));
+  const addHotel    = () => setForm((f) => ({ ...f, hotels: [...f.hotels, { ...EMPTY_HOTEL, confirmationNumber: generateConfirmationNumber(), rooms: [{ ...EMPTY_ROOM }] }] }));
   const removeHotel = (i) => setForm((f) => ({ ...f, hotels: f.hotels.filter((_, idx) => idx !== i) }));
 
   const setRoom = (hi, ri, k, v) => setForm((f) => {
@@ -213,7 +216,7 @@ function VoucherModal({ onClose, onSaved }) {
                     <input className="input bg-slate-50" value={h.hotelCountry} onChange={(e) => setHotel(i, "hotelCountry", e.target.value)} />
                   </Field>
                   <Field label="Confirmation No.">
-                    <input className="input" value={h.confirmationNumber} onChange={(e) => setHotel(i, "confirmationNumber", e.target.value)} />
+                    <input className="input font-mono font-bold text-brand-700" value={h.confirmationNumber} onChange={(e) => setHotel(i, "confirmationNumber", cleanConfirmationNumber(e.target.value))} maxLength={6} inputMode="numeric" />
                   </Field>
                   <Field label="Meal Plan">
                     <select className="input" value={h.mealPlan} onChange={(e) => setHotel(i, "mealPlan", e.target.value)}>

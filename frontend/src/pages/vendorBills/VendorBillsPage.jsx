@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
+import { bookingAPI } from "../../api";
 import { ConfirmModal, Empty, Field, PageLoader, Pagination, SearchBar } from "../../components/common";
 import { notifyError } from "../../utils/helpers";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
@@ -19,16 +20,11 @@ const money = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFr
 
 const EMPTY_LINE = { serviceType: "hotel", description: "", qty: 1, rate: "", amount: "" };
 
-function statusBadge(status) {
-  const map = { open: "badge-yellow", partial: "badge-blue", paid: "badge-green", overdue: "badge-red", void: "badge-red" };
-  const label = { open: "open", partial: "partial", paid: "paid", overdue: "overdue", void: "void" };
-  return <span className={map[status] || "badge-gray"}>{label[status] || "open"}</span>;
-}
-
 export function BillModal({ bill, onClose, onSaved }) {
   const isEdit = !!bill;
   const { data: vendors = [] } = useSundryDropdown({ role: "vendor" });
   const { create, update } = useVendorBillMutations();
+  const [bookingLookup, setBookingLookup] = useState(false);
   const [form, setForm] = useState(bill ? {
     vendorId: bill.vendorId || "",
     vendor: {
@@ -41,7 +37,6 @@ export function BillModal({ bill, onClose, onSaved }) {
     },
     vendorInvoiceNumber: bill.vendorInvoiceNumber || "",
     billDate: bill.billDate || today(),
-    dueDate: bill.dueDate || "",
     bookingId: bill.bookingId || "",
     taxAmount: bill.taxAmount || "",
     notes: bill.notes || "",
@@ -51,7 +46,6 @@ export function BillModal({ bill, onClose, onSaved }) {
     vendor: { name: "", company: "", email: "", phone: "", address: "", pan: "" },
     vendorInvoiceNumber: "",
     billDate: today(),
-    dueDate: "",
     bookingId: "",
     taxAmount: "",
     notes: "",
@@ -60,6 +54,22 @@ export function BillModal({ bill, onClose, onSaved }) {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setVendor = (k, v) => setForm((f) => ({ ...f, vendor: { ...f.vendor, [k]: v } }));
+
+  const fetchBooking = async () => {
+    const bookingId = (form.bookingId || "").trim();
+    if (!bookingId) { toast.error("Booking ID required"); return; }
+    setBookingLookup(true);
+    try {
+      const { data } = await bookingAPI.getByQueryId(bookingId);
+      const booking = data?.data || {};
+      set("bookingId", booking.queryId || bookingId);
+      toast.success(`Booking ${booking.queryId || bookingId} loaded`);
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setBookingLookup(false);
+    }
+  };
 
   const selectVendor = (id) => {
     const vendor = vendors.find((v) => v._id === id);
@@ -101,6 +111,10 @@ export function BillModal({ bill, onClose, onSaved }) {
     e.preventDefault();
     if (!form.vendor.name.trim() && !form.vendor.company.trim()) {
       toast.error("Vendor is required");
+      return;
+    }
+    if (!form.bookingId.trim()) {
+      toast.error("Booking ID is required");
       return;
     }
     if (!form.lines.some((line) => line.description.trim() && Number(line.amount) >= 0)) {
@@ -150,11 +164,13 @@ export function BillModal({ bill, onClose, onSaved }) {
               <Field label="Bill Date" required>
                 <input className="input" type="date" value={form.billDate} onChange={(e) => set("billDate", e.target.value)} required />
               </Field>
-              <Field label="Due Date">
-                <input className="input" type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
-              </Field>
-              <Field label="Booking ID">
-                <input className="input" value={form.bookingId} onChange={(e) => set("bookingId", e.target.value)} placeholder="ASA..." />
+              <Field label="Booking ID" required>
+                <div className="flex gap-2">
+                  <input className="input flex-1" value={form.bookingId} onChange={(e) => set("bookingId", e.target.value)} placeholder="ASA..." required />
+                  <button type="button" onClick={fetchBooking} disabled={bookingLookup || !form.bookingId.trim()} className="btn-secondary text-xs whitespace-nowrap">
+                    {bookingLookup ? "Fetching…" : <><i className="fa fa-search" /> Fetch</>}
+                  </button>
+                </div>
               </Field>
               <Field label="Tax Amount">
                 <input className="input" type="number" min="0" step="any" value={form.taxAmount} onChange={(e) => set("taxAmount", e.target.value)} />
@@ -170,15 +186,25 @@ export function BillModal({ bill, onClose, onSaved }) {
               </div>
               <div className="space-y-2">
                 {form.lines.map((line, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-2">
-                    <select className="input col-span-2" value={line.serviceType} onChange={(e) => updateLine(idx, "serviceType", e.target.value)}>
-                      {["hotel", "transport", "guide", "activity", "flight", "visa", "meal", "other"].map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <input className="input col-span-5" value={line.description} onChange={(e) => updateLine(idx, "description", e.target.value)} placeholder="Description" />
-                    <input className="input col-span-1" type="number" min="0" step="any" value={line.qty} onChange={(e) => updateLine(idx, "qty", e.target.value)} />
-                    <input className="input col-span-2" type="number" min="0" step="any" value={line.rate} onChange={(e) => updateLine(idx, "rate", e.target.value)} placeholder="Rate" />
-                    <input className="input col-span-1" type="number" min="0" step="any" value={line.amount} onChange={(e) => updateLine(idx, "amount", e.target.value)} />
-                    <button type="button" className="btn-ghost text-red-400" onClick={() => set("lines", form.lines.filter((_, i) => i !== idx))} disabled={form.lines.length === 1}>
+                  <div key={idx} className="grid grid-cols-1 md:grid-cols-[130px_minmax(220px,1fr)_90px_130px_140px_42px] gap-2 items-end rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <Field label="Service">
+                      <select className="input" value={line.serviceType} onChange={(e) => updateLine(idx, "serviceType", e.target.value)}>
+                        {["hotel", "transport", "guide", "activity", "flight", "visa", "meal", "other"].map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Description">
+                      <input className="input" value={line.description} onChange={(e) => updateLine(idx, "description", e.target.value)} placeholder="Description" />
+                    </Field>
+                    <Field label="Qty">
+                      <input className="input" type="number" min="0" step="any" value={line.qty} onChange={(e) => updateLine(idx, "qty", e.target.value)} />
+                    </Field>
+                    <Field label="Rate">
+                      <input className="input" type="number" min="0" step="any" value={line.rate} onChange={(e) => updateLine(idx, "rate", e.target.value)} placeholder="0.00" />
+                    </Field>
+                    <Field label="Total">
+                      <input className="input" type="number" min="0" step="any" value={line.amount} onChange={(e) => updateLine(idx, "amount", e.target.value)} placeholder="0.00" />
+                    </Field>
+                    <button type="button" className="btn-ghost text-red-400 h-10" onClick={() => set("lines", form.lines.filter((_, i) => i !== idx))} disabled={form.lines.length === 1} title="Remove line">
                       <i className="fa fa-trash" />
                     </button>
                   </div>
@@ -343,7 +369,7 @@ export default function VendorBillsPage() {
           <>
             <div className="table-wrapper">
               <table className="table">
-                <thead><tr><th>Bill #</th><th>Bill / Due</th><th>Vendor</th><th>Booking</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th className="text-right">Actions</th></tr></thead>
+                <thead><tr><th>Bill #</th><th>Bill / Due</th><th>Vendor</th><th>Booking</th><th>Total</th><th>Paid</th><th>Balance</th><th className="text-right">Actions</th></tr></thead>
                 <tbody>
                   {bills.map((bill) => (
                     <tr key={bill._id}>
@@ -357,12 +383,6 @@ export default function VendorBillsPage() {
                       <td className="font-semibold">{money(bill.total)}</td>
                       <td className="text-green-600">{money(bill.amountPaid)}</td>
                       <td className="font-semibold text-red-600">{money(bill.balance)}</td>
-                      <td>
-                        {statusBadge(bill.paymentSummary?.status || bill.status)}
-                        {bill.paymentSummary?.overdueDays > 0 && (
-                          <p className="text-xs text-red-500 mt-1">{bill.paymentSummary.overdueDays} days late</p>
-                        )}
-                      </td>
                       <td><div className="flex justify-end gap-1">
                         {isAdmin && bill.status !== "void" && <button onClick={() => setEditBill(bill)} className="btn-ghost text-xs py-1 px-2">Edit</button>}
                         {["open", "partial"].includes(bill.status) && <button onClick={() => setPayBill(bill)} className="btn-ghost text-xs py-1 px-2">Pay</button>}

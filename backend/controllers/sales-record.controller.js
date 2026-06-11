@@ -1,4 +1,5 @@
 import SalesRecord from "../models/sales-record.model.js";
+import Invoice from "../models/invoice.model.js";
 import fs from "fs";
 import path from "path";
 import { UPLOAD_ROOT } from "../middleware/upload.middleware.js";
@@ -47,6 +48,13 @@ export const createSalesRecord = async (req, res) => {
     if (!clientName) {
       return res.status(400).json({ success: false, message: "Client name is required", data: null });
     }
+    const invoice = await Invoice.findOne({ invoiceNumber: invoiceNumber.trim().toUpperCase() }).lean();
+    if (!invoice) {
+      return res.status(400).json({ success: false, message: "Sales records must be linked to an existing invoice.", data: null });
+    }
+    if (!String(invoice.bookingId || "").trim()) {
+      return res.status(400).json({ success: false, message: "The linked invoice does not have a booking ID.", data: null });
+    }
 
     // Duplicate invoice check
     const existing = await SalesRecord.findOne({
@@ -66,6 +74,7 @@ export const createSalesRecord = async (req, res) => {
 
     const record = await SalesRecord.create({
       invoiceNumber:    invoiceNumber.trim().toUpperCase(),
+      bookingId:        invoice.bookingId,
       clientName:       clientName.trim(),
       address:          address?.trim()             || "",
       phone:            phone?.trim()               || "",
@@ -197,6 +206,14 @@ export const updateSalesRecord = async (req, res) => {
     const sanitised          = sanitiseEntries(paymentEntries);
     const receivedAmount     = sanitised.reduce((s, e) => s + e.amount, 0);
     const outstandingBalance = (Number(totalAmount) || 0) - receivedAmount;
+    const existingRecord = await SalesRecord.findById(req.params.id).select("invoiceNumber").lean();
+    if (!existingRecord) {
+      return res.status(404).json({ success: false, message: "Sales record not found", data: null });
+    }
+    const invoice = await Invoice.findOne({ invoiceNumber: String(existingRecord.invoiceNumber || "").trim().toUpperCase() }).lean();
+    if (!invoice || !String(invoice.bookingId || "").trim()) {
+      return res.status(400).json({ success: false, message: "Sales records must remain linked to an invoice with a booking ID.", data: null });
+    }
 
     // invoiceNumber is intentionally excluded from $set — it is immutable
     const record = await SalesRecord.findByIdAndUpdate(
@@ -204,6 +221,7 @@ export const updateSalesRecord = async (req, res) => {
       {
         $set: {
           clientName:        clientName.trim(),
+          bookingId:         invoice.bookingId,
           address:           address?.trim()             || "",
           phone:             phone?.trim()               || "",
           email:             email?.trim().toLowerCase() || "",

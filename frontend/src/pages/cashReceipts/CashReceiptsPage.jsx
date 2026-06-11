@@ -59,6 +59,8 @@ function CashReceiptModal({ onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.invoiceNumber.trim()) { toast.error("Invoice number is required"); return; }
+    if (!form.bookingId.trim()) { toast.error("Fetch the invoice before saving so the booking is linked"); return; }
     setLoading(true);
     try {
       await cashReceiptAPI.create(form);
@@ -82,9 +84,9 @@ function CashReceiptModal({ onClose, onSaved }) {
           <div className="modal-body space-y-3">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Accounting Link</p>
-              <Field label="Invoice Number">
+              <Field label="Invoice Number" required>
                 <div className="flex gap-2">
-                  <input className="input flex-1" value={form.invoiceNumber} onChange={(e) => set("invoiceNumber", e.target.value)} placeholder="e.g. ASA47821396" />
+                  <input className="input flex-1" value={form.invoiceNumber} onChange={(e) => set("invoiceNumber", e.target.value)} placeholder="e.g. ASA47821396" required />
                   <button type="button" onClick={lookupInvoice} disabled={lookingUp || !form.invoiceNumber.trim()} className="btn-secondary text-xs whitespace-nowrap">
                     {lookingUp ? "Fetching..." : <><i className="fa fa-search" /> Fetch</>}
                   </button>

@@ -121,6 +121,10 @@ function SundryModal({ entry, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isEdit && codeLoading) {
+      toast.error("Please wait for the party code to generate");
+      return;
+    }
     const v = validate();
     if (Object.keys(v).length) {
       setErrors(v);
@@ -217,8 +221,8 @@ function SundryModal({ entry, onClose, onSaved }) {
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-            <button type="submit" disabled={loading} className="btn-primary">
-              <i className="fa fa-save" /> {loading ? "Saving…" : isEdit ? "Update Entry" : "Save Entry"}
+            <button type="submit" disabled={loading || (!isEdit && codeLoading)} className="btn-primary">
+              <i className="fa fa-save" /> {loading ? "Saving…" : codeLoading && !isEdit ? "Generating Code…" : isEdit ? "Update Entry" : "Save Entry"}
             </button>
           </div>
         </form>
@@ -246,7 +250,13 @@ export default function SundryPage() {
   } = useSundryPaginated({ search: debouncedSearch, page, limit: 50 });
   useEffect(() => { if (error) notifyError(error); }, [error]);
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ["sundry"] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["sundry"] });
+    qc.invalidateQueries({ queryKey: ["bookings"] });
+    qc.invalidateQueries({ queryKey: ["booking"] });
+    qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+    qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+  };
 
   return (
     <div>

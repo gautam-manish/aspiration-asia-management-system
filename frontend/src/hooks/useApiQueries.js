@@ -415,8 +415,11 @@ export function useSundryMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["sundry"] });
+    qc.invalidateQueries({ queryKey: ["bookings"] });
+    qc.invalidateQueries({ queryKey: ["booking"] });
     qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
     qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
   };
   return {
     create: useMutation({
@@ -783,6 +786,8 @@ export function useVendorBillMutations() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["vendor-bills"] });
     qc.invalidateQueries({ queryKey: ["vendor-bill"] });
+    qc.invalidateQueries({ queryKey: ["vendor-payments"] });
+    qc.invalidateQueries({ queryKey: ["vendor-payment"] });
     qc.invalidateQueries({ queryKey: ["reports", "ap-aging"] });
     qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
     qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });

@@ -6,6 +6,7 @@ import compression from "compression";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import path from "path";
+import { fileURLToPath } from "url";
 
 import connectDB from "./config/db.js";
 import validateEnv from "./config/env.js";
@@ -39,6 +40,7 @@ validateEnv();
 connectDB();
 
 const app = express();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ── Trust proxy (needed behind Nginx / Cloudflare so rate-limiter uses real IP)
 app.set("trust proxy", 1);
@@ -85,6 +87,10 @@ app.use(express.json({ limit: "1mb" }));
 // Files are streamed from disk by the OS (low memory footprint).
 // We serve from UPLOAD_BASE — same dir multer writes to, configurable via UPLOAD_DIR.
 app.use("/uploads", express.static(UPLOAD_BASE));
+const legacyUploadBase = path.join(__dirname, "uploads");
+if (path.resolve(legacyUploadBase) !== path.resolve(UPLOAD_BASE)) {
+  app.use("/uploads", express.static(legacyUploadBase));
+}
 
 // ── Health check (used by load balancers / uptime monitors) ──────────────────
 app.get("/api/health", (_req, res) => {

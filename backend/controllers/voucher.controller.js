@@ -1,6 +1,15 @@
 import Voucher from "../models/voucher.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
 
+const generateConfirmationNumber = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+function normaliseHotels(hotels = []) {
+  return (Array.isArray(hotels) ? hotels : []).map((hotel) => ({
+    ...hotel,
+    confirmationNumber: String(hotel?.confirmationNumber || "").replace(/\D/g, "").slice(0, 6) || generateConfirmationNumber(),
+  }));
+}
+
 // ─────────────────────────────────────────
 // @desc    Create Voucher
 // @route   POST /api/vouchers
@@ -23,7 +32,7 @@ export const createVoucher = async (req, res) => {
     const voucher = await Voucher.create({
       guestName, nationality, bookingId,
       contactNumber, mealInstruction, wheelChair, arrivalFlightDetails, preferredFloor,
-      pax, hotels,
+      pax, hotels: normaliseHotels(hotels),
     });
 
     res.status(201).json({ success: true, message: "Voucher created successfully", data: voucher });
@@ -149,6 +158,7 @@ export const updateVoucher = async (req, res) => {
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
+    if (updates.hotels) updates.hotels = normaliseHotels(updates.hotels);
 
     const voucher = await Voucher.findByIdAndUpdate(
       req.params.id,

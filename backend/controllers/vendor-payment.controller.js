@@ -3,6 +3,7 @@ import VendorBill from "../models/vendor-bill.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
 import { recalcBillPaymentState } from "./vendor-bill.controller.js";
 import { postVendorPaymentJournal, reverseJournalEntry } from "../services/journal.service.js";
+import { resolveBookingId } from "../utils/bookingRef.js";
 
 async function generatePaymentNumber() {
   const d = new Date();
@@ -58,6 +59,7 @@ function validatePayment(data) {
   if (!data.paymentDate) errors.push("Payment date is required");
   if (!data.amount || data.amount <= 0) errors.push("Amount must be greater than zero");
   if (!data.vendor.name && !data.vendor.company) errors.push("Vendor is required");
+  if (!data.vendorBillId && !data.bookingId) errors.push("Booking ID is required");
   if (!["cash", "bank", "card", "wallet", "cheque", "other"].includes(data.method)) errors.push("Invalid payment method");
   return errors;
 }
@@ -109,6 +111,9 @@ export const createVendorPayment = async (req, res) => {
 
     const bill = await findBill(req.body);
     const data = cleanPaymentPayload(req.body, bill);
+    const bookingRef = await resolveBookingId(data.bookingId);
+    if (bookingRef.error) return res.status(400).json({ success: false, message: bookingRef.error, data: null });
+    data.bookingId = bookingRef.bookingId;
     const errors = [
       ...validatePayment(data),
       ...(await validateVendorPaymentBusinessRules(data)),
@@ -205,6 +210,9 @@ export const updateVendorPayment = async (req, res) => {
     const merged = { ...existing.toObject(), ...req.body };
     const bill = await findBill(merged);
     const data = cleanPaymentPayload(merged, bill);
+    const bookingRef = await resolveBookingId(data.bookingId);
+    if (bookingRef.error) return res.status(400).json({ success: false, message: bookingRef.error, data: null });
+    data.bookingId = bookingRef.bookingId;
     const errors = [
       ...validatePayment(data),
       ...(await validateVendorPaymentBusinessRules(data, req.params.id)),

@@ -2,6 +2,7 @@ import CustomerPayment from "../models/customer-payment.model.js";
 import Invoice from "../models/invoice.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
 import { postCustomerPaymentJournal, reverseJournalEntry } from "../services/journal.service.js";
+import { resolveBookingId } from "../utils/bookingRef.js";
 
 async function generatePaymentNumber() {
   const date = new Date();
@@ -66,6 +67,9 @@ function validatePaymentPayload(data) {
 async function validateCustomerPaymentBusinessRules(data, excludeId = null) {
   const errors = [];
   const exclusion = excludeId ? { _id: { $ne: excludeId } } : {};
+  if (!String(data.bookingId || "").trim()) {
+    errors.push("Booking ID is required");
+  }
 
   if (data.referenceCode) {
     const referenceScope = [
@@ -150,11 +154,13 @@ export async function createCustomerPaymentFromInvoiceAdvance(invoice, advanceEn
 export const createCustomerPayment = async (req, res) => {
   try {
     const data = cleanPayload(req.body);
-    if (data.invoiceId && (!data.invoiceNumber || !data.customer.name)) {
-      const invoice = await Invoice.findById(data.invoiceId);
+    if (data.invoiceId || data.invoiceNumber) {
+      const invoice = data.invoiceId
+        ? await Invoice.findById(data.invoiceId)
+        : await Invoice.findOne({ invoiceNumber: data.invoiceNumber });
       if (invoice) {
         data.invoiceNumber ||= invoice.invoiceNumber || "";
-        data.bookingId ||= invoice.bookingId || "";
+        data.bookingId = invoice.bookingId || data.bookingId || "";
         data.customerId ||= invoice.customerId || null;
         data.customer = {
           name: data.customer.name || invoice.billTo?.name || "",
@@ -164,6 +170,11 @@ export const createCustomerPayment = async (req, res) => {
         };
       }
     }
+    const bookingRef = await resolveBookingId(data.bookingId);
+    if (bookingRef.error) {
+      return res.status(400).json({ success: false, message: bookingRef.error, data: null });
+    }
+    data.bookingId = bookingRef.bookingId;
 
     const errors = [
       ...validatePaymentPayload(data),
@@ -272,11 +283,13 @@ export const updateCustomerPayment = async (req, res) => {
       sourceRef: existing.sourceRef,
     });
 
-    if (data.invoiceId && (!data.invoiceNumber || !data.customer.name)) {
-      const invoice = await Invoice.findById(data.invoiceId);
+    if (data.invoiceId || data.invoiceNumber) {
+      const invoice = data.invoiceId
+        ? await Invoice.findById(data.invoiceId)
+        : await Invoice.findOne({ invoiceNumber: data.invoiceNumber });
       if (invoice) {
         data.invoiceNumber ||= invoice.invoiceNumber || "";
-        data.bookingId ||= invoice.bookingId || "";
+        data.bookingId = invoice.bookingId || data.bookingId || "";
         data.customerId ||= invoice.customerId || null;
         data.customer = {
           name: data.customer.name || invoice.billTo?.name || "",
@@ -286,6 +299,11 @@ export const updateCustomerPayment = async (req, res) => {
         };
       }
     }
+    const bookingRef = await resolveBookingId(data.bookingId);
+    if (bookingRef.error) {
+      return res.status(400).json({ success: false, message: bookingRef.error, data: null });
+    }
+    data.bookingId = bookingRef.bookingId;
 
     const errors = [
       ...validatePaymentPayload(data),

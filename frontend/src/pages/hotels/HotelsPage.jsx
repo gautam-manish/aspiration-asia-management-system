@@ -139,10 +139,10 @@ function HotelModal({ hotel, onClose, onSaved }) {
                       </select>
                     </div>
                     <div className="col-span-2">
-                      <input className="input text-sm" type="number" value={c.inrRate} onChange={(e) => setCost(i, "inrRate", e.target.value)} placeholder="INR" required min="0" />
+                      <input className="input text-sm" type="number" value={c.inrRate} onChange={(e) => setCost(i, "inrRate", e.target.value)} placeholder="INR" required min="0" step="0.01" />
                     </div>
                     <div className="col-span-2">
-                      <input className="input text-sm" type="number" value={c.usdRate} onChange={(e) => setCost(i, "usdRate", e.target.value)} placeholder="USD" required min="0" />
+                      <input className="input text-sm" type="number" value={c.usdRate} onChange={(e) => setCost(i, "usdRate", e.target.value)} placeholder="USD" required min="0" step="0.01" />
                     </div>
                     <div className="col-span-1 flex justify-center">
                       {form.costPerRoom.length > 1 && (

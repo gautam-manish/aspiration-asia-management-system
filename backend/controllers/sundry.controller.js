@@ -1,5 +1,6 @@
 import Sundry from "../models/sundry.model.js";
 import Counter from "../models/counter.model.js";
+import Booking from "../models/booking.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
 
 const COUNTRIES = ["Nepal", "India", "Bhutan", ""];
@@ -79,7 +80,7 @@ function validateSundryPayload(body = {}) {
 
 async function generatePartyCode(role) {
   const prefix = role === "vendor" ? "VEN" : "CUS";
-  for (let attempts = 0; attempts < 5; attempts += 1) {
+  for (let attempts = 0; attempts < 100; attempts += 1) {
     const counter = await Counter.findOneAndUpdate(
       { name: `sundry-${role}` },
       { $inc: { seq: 1 } },
@@ -96,7 +97,7 @@ async function previewPartyCode(role) {
   const prefix = role === "vendor" ? "VEN" : "CUS";
   const counter = await Counter.findOne({ name: `sundry-${role}` }).lean();
   let seq = Number(counter?.seq || 0) + 1;
-  for (let attempts = 0; attempts < 20; attempts += 1) {
+  for (let attempts = 0; attempts < 100; attempts += 1) {
     const code = `${prefix}-${String(seq).padStart(5, "0")}`;
     const exists = await Sundry.exists({ partyCode: code });
     if (!exists) return code;
@@ -327,6 +328,21 @@ export const updateSundry = async (req, res) => {
       { $set: data },
       { returnDocument: "after", runValidators: true },
     );
+
+    if (entry?.roles?.[0] === "customer") {
+      await Booking.updateMany(
+        { customerId: entry._id },
+        {
+          $set: {
+            companyName: entry.companyName || "",
+            contactPerson: entry.contactPerson || "",
+            email: entry.email || "",
+            mobile: entry.phone || "",
+            address: entry.address || "",
+          },
+        },
+      );
+    }
 
     return res.status(200).json({ success: true, message: "Party entry updated successfully", data: entry });
   } catch (error) {

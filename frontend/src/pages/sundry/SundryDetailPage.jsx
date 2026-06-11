@@ -84,6 +84,10 @@ export default function SundryDetailPage() {
       toast.success("Entry updated ✓");
       // Refresh both the list cache and this entry's cache
       qc.invalidateQueries({ queryKey: ["sundry"] });
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["booking"] });
+      qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+      qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
     } catch (err) {
       notifyError(err);
     } finally {

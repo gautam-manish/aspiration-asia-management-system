@@ -1,5 +1,6 @@
 import CashReceipt from "../models/cash-receipt.model.js";
 import Counter from "../models/counter.model.js";
+import Invoice from "../models/invoice.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
 import {
   syncCashReceiptCustomerPayment,
@@ -12,6 +13,18 @@ import {
 // ─────────────────────────────────────────
 export const createCashReceipt = async (req, res) => {
   try {
+    const invoiceNumber = String(req.body?.invoiceNumber || "").trim().toUpperCase();
+    if (!invoiceNumber) {
+      return res.status(400).json({ success: false, message: "Invoice number is required for cash receipts.", data: null });
+    }
+    const invoice = await Invoice.findOne({ invoiceNumber }).lean();
+    if (!invoice) {
+      return res.status(400).json({ success: false, message: "Cash receipts must be linked to an existing invoice.", data: null });
+    }
+    if (!String(invoice.bookingId || "").trim()) {
+      return res.status(400).json({ success: false, message: "The linked invoice does not have a booking ID.", data: null });
+    }
+
     // ✅ GET NEXT NUMBER
     const counter = await Counter.findOneAndUpdate(
       { name: "cashReceipt" },
@@ -25,6 +38,8 @@ export const createCashReceipt = async (req, res) => {
     // ✅ CREATE WITH AUTO NUMBER
     const receipt = await CashReceipt.create({
       ...req.body,
+      invoiceNumber: invoice.invoiceNumber,
+      bookingId: invoice.bookingId,
       bankAccountId: req.body?.bankAccountId || null,
       registrationNumber
     });

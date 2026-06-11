@@ -2,7 +2,8 @@ import VendorBill from "../models/vendor-bill.model.js";
 import VendorPayment from "../models/vendor-payment.model.js";
 import Sundry from "../models/sundry.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
-import { postVendorBillJournal, reverseJournalEntry } from "../services/journal.service.js";
+import { postVendorBillJournal, postVendorPaymentJournal, reverseJournalEntry } from "../services/journal.service.js";
+import { resolveBookingId } from "../utils/bookingRef.js";
 
 async function generateBillNumber() {
   const d = new Date();
@@ -123,6 +124,8 @@ export const createVendorBill = async (req, res) => {
     const lines = cleanLines(req.body.lines || []);
     if (!req.body.billDate) return res.status(400).json({ success: false, message: "Bill date is required.", data: null });
     if (!lines.length) return res.status(400).json({ success: false, message: "At least one bill line is required.", data: null });
+    const bookingRef = await resolveBookingId(req.body.bookingId);
+    if (bookingRef.error) return res.status(400).json({ success: false, message: bookingRef.error, data: null });
 
     const subtotal = round(req.body.subtotal ?? lines.reduce((sum, line) => sum + line.amount, 0));
     const taxAmount = round(req.body.taxAmount || 0);
@@ -135,7 +138,7 @@ export const createVendorBill = async (req, res) => {
       vendorInvoiceNumber: String(req.body.vendorInvoiceNumber || "").trim(),
       billDate: String(req.body.billDate || "").trim(),
       dueDate: String(req.body.dueDate || "").trim(),
-      bookingId: String(req.body.bookingId || "").trim(),
+      bookingId: bookingRef.bookingId,
       vendorId: req.body.vendorId || null,
       vendor: await vendorSnapshot(req.body),
       lines,
@@ -230,6 +233,9 @@ export const updateVendorBill = async (req, res) => {
     const lines = cleanLines(req.body.lines || bill.lines || []);
     if (!req.body.billDate && !bill.billDate) return res.status(400).json({ success: false, message: "Bill date is required.", data: null });
     if (!lines.length) return res.status(400).json({ success: false, message: "At least one bill line is required.", data: null });
+    const nextBookingId = req.body.bookingId ?? bill.bookingId ?? "";
+    const bookingRef = await resolveBookingId(nextBookingId);
+    if (bookingRef.error) return res.status(400).json({ success: false, message: bookingRef.error, data: null });
 
     const subtotal = round(req.body.subtotal ?? lines.reduce((sum, line) => sum + line.amount, 0));
     const taxAmount = round(req.body.taxAmount ?? bill.taxAmount ?? 0);
@@ -238,7 +244,7 @@ export const updateVendorBill = async (req, res) => {
     bill.vendorInvoiceNumber = String(req.body.vendorInvoiceNumber ?? bill.vendorInvoiceNumber ?? "").trim();
     bill.billDate = String(req.body.billDate ?? bill.billDate ?? "").trim();
     bill.dueDate = String(req.body.dueDate ?? bill.dueDate ?? "").trim();
-    bill.bookingId = String(req.body.bookingId ?? bill.bookingId ?? "").trim();
+    bill.bookingId = bookingRef.bookingId;
     bill.vendorId = req.body.vendorId ?? bill.vendorId ?? null;
     bill.vendor = await vendorSnapshot({ ...bill.toObject(), ...req.body });
     bill.lines = lines;
@@ -248,6 +254,30 @@ export const updateVendorBill = async (req, res) => {
     bill.currency = String(req.body.currency ?? bill.currency ?? "Rs.").trim();
     bill.notes = String(req.body.notes ?? bill.notes ?? "").trim();
     await bill.save();
+    const linkedPayments = await VendorPayment.find({ vendorBillId: bill._id });
+    for (const payment of linkedPayments) {
+      const nextVendor = {
+        name: bill.vendor?.name || "",
+        company: bill.vendor?.company || "",
+        email: bill.vendor?.email || "",
+        phone: bill.vendor?.phone || "",
+        address: bill.vendor?.address || "",
+      };
+      const changed =
+        String(payment.billNumber || "") !== String(bill.billNumber || "").toUpperCase() ||
+        String(payment.bookingId || "") !== String(bill.bookingId || "") ||
+        String(payment.vendorId || "") !== String(bill.vendorId || "") ||
+        ["name", "company", "email", "phone", "address"].some((key) => String(payment.vendor?.[key] || "") !== String(nextVendor[key] || ""));
+
+      if (changed) {
+        payment.billNumber = String(bill.billNumber || "").toUpperCase();
+        payment.bookingId = bill.bookingId;
+        payment.vendorId = bill.vendorId || null;
+        payment.vendor = nextVendor;
+        await payment.save();
+        if (payment.status === "posted") await postVendorPaymentJournal(payment, req.user);
+      }
+    }
 
     const recalculated = await recalcBillPaymentState(bill._id);
     await postVendorBillJournal(recalculated, req.user);

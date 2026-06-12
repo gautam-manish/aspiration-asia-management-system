@@ -257,8 +257,11 @@ export const updateVendorBill = async (req, res) => {
     bill.billDate = String(req.body.billDate ?? bill.billDate ?? "").trim();
     bill.dueDate = String(req.body.dueDate ?? bill.dueDate ?? "").trim();
     bill.bookingId = bookingRef.bookingId;
-    bill.vendorId = req.body.vendorId ?? bill.vendorId ?? null;
-    bill.vendor = await vendorSnapshot({ ...bill.toObject(), ...req.body });
+    const nextVendorId = req.body.vendorId !== undefined
+      ? req.body.vendorId || null
+      : bill.vendorId || null;
+    bill.vendorId = nextVendorId;
+    bill.vendor = await vendorSnapshot({ ...bill.toObject(), ...req.body, vendorId: nextVendorId });
     bill.lines = lines;
     bill.subtotal = subtotal;
     bill.taxAmount = taxAmount;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { notifyError } from "../../utils/helpers";
@@ -11,17 +11,23 @@ export default function LoginPage() {
   const [form, setForm]       = useState({ username: "", password: "" });
   const [showPw, setShowPw]   = useState(false);
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    toast.dismiss();
     setLoading(true);
     try {
       await login(form);
+      toast.dismiss();
       toast.success("Welcome back!");
       navigate("/");
     } catch (err) {
-      notifyError(err);
+      await notifyError(err);
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };

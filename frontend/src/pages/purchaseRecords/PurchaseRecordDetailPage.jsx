@@ -412,8 +412,8 @@ export default function PurchaseRecordDetailPage() {
           <h3 className="font-semibold text-slate-700">Purchase Entries</h3>
           <div className="flex items-center gap-2">
             <span className="badge badge-blue">{purchaseEntries.length} entries</span>
-            <button type="button" onClick={() => setEntryModal("payment")} className="btn-secondary text-xs">
-              <i className="fa fa-plus" /> Add Payment Entry
+            <button type="button" onClick={() => setEntryModal("purchase")} className="btn-secondary text-xs">
+              <i className="fa fa-plus" /> Add Purchase Entry
             </button>
           </div>
         </div>

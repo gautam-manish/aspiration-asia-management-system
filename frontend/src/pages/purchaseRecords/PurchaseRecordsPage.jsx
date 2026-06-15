@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { bookingAPI, purchaseRecordAPI, resolveUploadUrl } from "../../api";
@@ -92,6 +92,7 @@ export function AddModal({ mode = "purchase", initialVendor = null, initialTrans
   const [taxAmount, setTaxAmount] = useState("");
   const [lines, setLines] = useState([{ ...EMPTY_LINE }]);
   const [loading,  setLoading]  = useState(false);
+  const submittingRef = useRef(false);
   const [bookingLookup, setBookingLookup] = useState(false);
   // Holds the existing PurchaseRecord doc when one is found for the selected vendor.
   // null = unknown, false = no existing account (new ledger), object = existing.
@@ -183,6 +184,7 @@ export function AddModal({ mode = "purchase", initialVendor = null, initialTrans
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     if (!selected) { toast.error("Select a creditor/vendor from the dropdown"); return; }
     const debtorNameClean = selected.contactPerson;
     if (!txn.bookingId.trim()) { toast.error("Booking ID required"); return; }
@@ -198,6 +200,7 @@ export function AddModal({ mode = "purchase", initialVendor = null, initialTrans
       toast.error(`Amount exceeds selected bank balance (${fmt(selectedBank.balance)})`);
       return;
     }
+    submittingRef.current = true;
     setLoading(true);
     try {
       const { data } = await purchaseRecordAPI.create({
@@ -239,6 +242,7 @@ export function AddModal({ mode = "purchase", initialVendor = null, initialTrans
     } catch (err) {
       notifyError(err);
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
@@ -322,7 +326,7 @@ export function AddModal({ mode = "purchase", initialVendor = null, initialTrans
             {!isPayment && (
               <div className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Field label="Vendor Tax Invoice #">
+                  <Field label="Invoice #">
                     <input className="input" value={txn.refNo} onChange={(e) => setT("refNo", e.target.value)} />
                   </Field>
                   <Field label="Entry / Invoice Date *">

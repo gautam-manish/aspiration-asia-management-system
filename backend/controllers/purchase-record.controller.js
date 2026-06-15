@@ -528,6 +528,44 @@ export const updatePurchaseRecord = async (req, res) => {
 // DELETE PURCHASE RECORD
 // DELETE /api/purchaserecords/:id
 // ─────────────────────────────────────────────
+export const updateTransactionAttachment = async (req, res) => {
+  try {
+    const { attachment } = req.body;
+    const record = await PurchaseRecord.findById(req.params.id);
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase record not found.",
+      });
+    }
+
+    const transaction = record.transactions.id(req.params.transactionId);
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase entry not found.",
+      });
+    }
+
+    transaction.attachment = cleanAttachment(attachment);
+    await record.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Tax invoice slip updated successfully.",
+      data: record,
+    });
+  } catch (error) {
+    console.error("updateTransactionAttachment error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update tax invoice slip.",
+    });
+  }
+};
+
 export const deletePurchaseRecord = async (req, res) => {
   try {
     const record = await PurchaseRecord.findById(req.params.id);

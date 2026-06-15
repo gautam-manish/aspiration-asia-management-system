@@ -65,11 +65,12 @@ function AttachmentField({ label, attachment, onChange }) {
   );
 }
 
-export function AddModal({ mode = "purchase", initialVendor = null, onClose, onSaved }) {
+export function AddModal({ mode = "purchase", initialVendor = null, initialTransaction = null, bookingOptions = [], onClose, onSaved }) {
   const isPayment = mode === "payment";
   const initialVendorLabel = initialVendor
     ? initialVendor.contactPerson + (initialVendor.companyName ? ` (${initialVendor.companyName})` : "")
     : "";
+  const defaultBooking = initialTransaction || (bookingOptions.length === 1 ? bookingOptions[0] : null);
   // Cached sundry list — fetched once and reused on every modal open.
   const qc = useQueryClient();
   const { data: vendors = [], refetch: refetchVendors } = useSundryDropdown({ role: "vendor" });
@@ -80,8 +81,8 @@ export function AddModal({ mode = "purchase", initialVendor = null, onClose, onS
   const [txn,      setTxn]      = useState({
     date: today(),
     refNo: "",
-    bookingId: "",
-    clientName: "",
+    bookingId: defaultBooking?.bookingId || "",
+    clientName: defaultBooking?.clientName || "",
     description: "",
     amount: "",
     bank: "",
@@ -139,6 +140,15 @@ export function AddModal({ mode = "purchase", initialVendor = null, onClose, onS
   };
 
   const setT = (k, v) => setTxn((t) => ({ ...t, [k]: v }));
+
+  const applyBookingOption = (bookingId) => {
+    const match = bookingOptions.find((option) => option.bookingId === bookingId);
+    setTxn((t) => ({
+      ...t,
+      bookingId,
+      clientName: match?.clientName || "",
+    }));
+  };
 
   const updateLine = (idx, key, value) => {
     setLines((current) => current.map((line, i) => {
@@ -319,18 +329,26 @@ export function AddModal({ mode = "purchase", initialVendor = null, onClose, onS
                     <input className="input" type="date" value={txn.date} onChange={(e) => setT("date", e.target.value)} required />
                   </Field>
                   <Field label="Booking ID *">
-                    <div className="flex gap-2">
-                      <input className="input flex-1" value={txn.bookingId} onChange={(e) => setT("bookingId", e.target.value)} placeholder="ASA..." required />
-                      <button type="button" onClick={fetchBooking} disabled={bookingLookup || !txn.bookingId.trim()} className="btn-secondary text-xs whitespace-nowrap">
-                        {bookingLookup ? "Fetching..." : <><i className="fa fa-search" /> Fetch</>}
-                      </button>
-                    </div>
+                    {bookingOptions.length > 0 ? (
+                      <select className="input" value={txn.bookingId} onChange={(e) => applyBookingOption(e.target.value)} required>
+                        <option value="">Select booking</option>
+                        {bookingOptions.map((option) => (
+                          <option key={option.bookingId} value={option.bookingId}>
+                            {option.bookingId}{option.clientName ? ` - ${option.clientName}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input className="input flex-1" value={txn.bookingId} onChange={(e) => setT("bookingId", e.target.value)} placeholder="ASA..." required />
+                        <button type="button" onClick={fetchBooking} disabled={bookingLookup || !txn.bookingId.trim()} className="btn-secondary text-xs whitespace-nowrap">
+                          {bookingLookup ? "Fetching..." : <><i className="fa fa-search" /> Fetch</>}
+                        </button>
+                      </div>
+                    )}
                   </Field>
                   <Field label="Tax Amount">
                     <input className="input" type="number" min="0" step="any" value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} />
-                  </Field>
-                  <Field label="Final Tax Invoice Slip" className="sm:col-span-2">
-                    <AttachmentField label="Purchase Invoice" attachment={txn.attachment} onChange={(attachment) => setT("attachment", attachment)} />
                   </Field>
                   <Field label="Notes" className="sm:col-span-3">
                     <textarea className="input min-h-[76px]" value={txn.description} onChange={(e) => setT("description", e.target.value)} />
@@ -408,12 +426,23 @@ export function AddModal({ mode = "purchase", initialVendor = null, onClose, onS
                   <input className="input" value={txn.refNo} onChange={(e) => setT("refNo", e.target.value)} />
                 </Field>
                 <Field label="Booking ID *">
-                  <div className="flex gap-2">
-                    <input className="input flex-1" value={txn.bookingId} onChange={(e) => setT("bookingId", e.target.value)} placeholder="ASA..." required />
-                    <button type="button" onClick={fetchBooking} disabled={bookingLookup || !txn.bookingId.trim()} className="btn-secondary text-xs whitespace-nowrap">
-                      {bookingLookup ? "Fetching…" : <><i className="fa fa-search" /> Fetch</>}
-                    </button>
-                  </div>
+                  {bookingOptions.length > 0 ? (
+                    <select className="input" value={txn.bookingId} onChange={(e) => applyBookingOption(e.target.value)} required>
+                      <option value="">Select booking</option>
+                      {bookingOptions.map((option) => (
+                        <option key={option.bookingId} value={option.bookingId}>
+                          {option.bookingId}{option.clientName ? ` - ${option.clientName}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input className="input flex-1" value={txn.bookingId} onChange={(e) => setT("bookingId", e.target.value)} placeholder="ASA..." required />
+                      <button type="button" onClick={fetchBooking} disabled={bookingLookup || !txn.bookingId.trim()} className="btn-secondary text-xs whitespace-nowrap">
+                        {bookingLookup ? "Fetching…" : <><i className="fa fa-search" /> Fetch</>}
+                      </button>
+                    </div>
+                  )}
                 </Field>
                 <Field label="Client Name">
                   <input className="input" value={txn.clientName} onChange={(e) => setT("clientName", e.target.value)} />

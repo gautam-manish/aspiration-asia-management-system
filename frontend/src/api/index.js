@@ -215,6 +215,7 @@ export const purchaseRecordAPI = {
   update:          (id, data) => api.put(`/purchaserecords/${id}`, data),
   remove:          (id)       => api.delete(`/purchaserecords/${id}`),
   addTransaction:  (id, data) => api.post(`/purchaserecords/${id}/transaction`, data),
+  updateTransactionAttachment: (id, transactionId, data) => api.patch(`/purchaserecords/${id}/transactions/${transactionId}/attachment`, data),
   uploadAttachment: (file)    => {
     const fd = new FormData();
     fd.append("slip", file, file.name);

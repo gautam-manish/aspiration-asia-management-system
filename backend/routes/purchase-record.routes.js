@@ -6,6 +6,7 @@ import {
   createOrAddToPurchaseRecord,
   addTransaction,
   updatePurchaseRecord,
+  updateTransactionAttachment,
   deletePurchaseRecord,
   uploadPurchaseRecordAttachment,
   generateLedgerPdf,
@@ -49,6 +50,9 @@ router.route("/:id")
 // Add a new transaction entry to an existing debtor ledger
 router.route("/:id/transaction")
   .post(addTransaction);            // POST /api/purchaserecords/:id/transaction
+
+router.route("/:id/transactions/:transactionId/attachment")
+  .patch(updateTransactionAttachment);
 
 // PDF generation — streams PDF file
 // Optional query params: ?from=YYYY-MM-DD&to=YYYY-MM-DD

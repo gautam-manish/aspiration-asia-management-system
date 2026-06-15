@@ -29,8 +29,7 @@ function AttachmentField({ label, attachment, onChange }) {
     setBusy(true);
     try {
       const { data } = await purchaseRecordAPI.uploadAttachment(file);
-      onChange(data?.data || null);
-      toast.success("Attachment uploaded");
+      await onChange(data?.data || null);
     } catch (err) {
       notifyError(err);
     } finally {
@@ -77,6 +76,7 @@ export default function PurchaseRecordDetailPage() {
   const [pdfFiscal,  setPdfFiscal]  = useState("");
   const [txn,        setTxn]        = useState({ date: "", refNo: "", bookingId: "", clientName: "", description: "", amount: "", bank: "", type: "cr", attachment: null });
   const [saving,     setSaving]     = useState(false);
+  const [taxInvoiceSaving, setTaxInvoiceSaving] = useState(false);
   const [bookingLookup, setBookingLookup] = useState(false);
 
   const qc = useQueryClient();
@@ -307,6 +307,22 @@ export default function PurchaseRecordDetailPage() {
   const paymentEntries = sortedTxns.filter((t) => t.type === "dr");
   const purchaseTotal = purchaseEntries.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const paymentTotal = paymentEntries.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const bookingOptions = Array.from(
+    new Map(
+      sortedTxns
+        .filter((entry) => entry.bookingId)
+        .map((entry) => [entry.bookingId, {
+          bookingId: entry.bookingId,
+          clientName: entry.clientName || "",
+        }])
+    ).values()
+  );
+  const latestBookingEntry = [...sortedTxns].reverse().find((entry) => entry.bookingId);
+  const taxInvoiceEntry = [...purchaseEntries].reverse().find((entry) =>
+    entry.refNo || entry.attachment?.url || Number(entry.taxAmount || 0) > 0
+  );
+  const taxInvoiceTargetEntry = taxInvoiceEntry || [...purchaseEntries].reverse()[0];
+  const purchaseTaxTotal = purchaseEntries.reduce((sum, entry) => sum + (Number(entry.taxAmount) || 0), 0);
   const currentVendor = {
     _id: record.vendorId || "",
     contactPerson: record.debtorName || "",
@@ -328,6 +344,26 @@ export default function PurchaseRecordDetailPage() {
     qc.invalidateQueries({ queryKey: ["journal-entries"] });
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
     qc.invalidateQueries({ queryKey: ["bank-account"] });
+  };
+  const updateTaxInvoiceSlip = async (attachment) => {
+    if (!taxInvoiceTargetEntry?._id) {
+      toast.error("Create a purchase entry before adding a tax invoice slip");
+      return;
+    }
+    setTaxInvoiceSaving(true);
+    try {
+      const { data } = await purchaseRecordAPI.updateTransactionAttachment(record._id, taxInvoiceTargetEntry._id, { attachment });
+      if (data?.data) {
+        setRecord(data.data);
+        qc.setQueryData(["purchase-record", id], data.data);
+      }
+      refreshFinanceViews();
+      toast.success(attachment?.url ? "Final tax invoice slip added" : "Final tax invoice slip removed");
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setTaxInvoiceSaving(false);
+    }
   };
 
   return (
@@ -378,45 +414,63 @@ export default function PurchaseRecordDetailPage() {
         {purchaseEntries.length === 0 ? (
           <div className="card-body text-sm text-slate-400">No purchase entries recorded for this vendor.</div>
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr><th>Date</th><th>Tax Invoice</th><th>Booking</th><th>Purchase Details</th><th>Tax Invoice File</th><th className="text-right">Amount</th></tr>
-              </thead>
-              <tbody>
-                {purchaseEntries.map((entry, idx) => (
-                  <tr key={entry._id || idx}>
-                    <td className="text-sm text-slate-600">{entry.date || "-"}</td>
-                    <td className="font-mono text-xs text-slate-500">{entry.refNo || "-"}</td>
-                    <td className="font-mono text-xs text-brand-600">{entry.bookingId || "-"}</td>
-                    <td className="text-sm text-slate-700">
-                      {(entry.lineItems || []).length > 0 ? (
-                        <div className="space-y-1">
-                          {(entry.lineItems || []).map((line, lineIdx) => (
-                            <div key={lineIdx} className="text-xs">
-                              <span className="font-medium text-slate-700">{line.description || line.serviceType || "Line item"}</span>
-                              <span className="text-slate-400"> - {line.qty || 0} x Rs. {fmt(line.rate)} = Rs. {fmt(line.amount)}</span>
-                            </div>
-                          ))}
-                          {Number(entry.taxAmount || 0) > 0 && <p className="text-xs text-slate-500">Tax: Rs. {fmt(entry.taxAmount)}</p>}
-                        </div>
-                      ) : (
-                        entry.description || "-"
-                      )}
-                    </td>
-                    <td>
-                      {entry.attachment?.url ? (
-                        <a href={resolveUploadUrl(entry.attachment.url)} target="_blank" rel="noreferrer" className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1">
-                          <i className={`fa ${/^application\/pdf/.test(entry.attachment.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
-                          {entry.attachment.fileName || "View invoice"}
-                        </a>
-                      ) : "-"}
-                    </td>
-                    <td className="text-right font-semibold text-red-600">Rs. {fmt(entry.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div>
+            <div className="card-body border-b border-slate-100">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1">Tax Invoice</p>
+                    <p className="text-sm font-semibold text-slate-800">{taxInvoiceEntry?.refNo || "Not uploaded yet"}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Invoice Date: {taxInvoiceEntry?.date || "-"} | Tax Amount: Rs. {fmt(purchaseTaxTotal)}
+                    </p>
+                  </div>
+                  <div className="w-full md:w-80">
+                    {taxInvoiceSaving ? (
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500 flex items-center justify-center gap-2">
+                        <i className="fa fa-spinner fa-spin" /> Saving tax invoice slip...
+                      </div>
+                    ) : (
+                      <AttachmentField
+                        label="Final Tax Invoice Slip"
+                        attachment={taxInvoiceEntry?.attachment}
+                        onChange={updateTaxInvoiceSlip}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr><th>Date</th><th>Booking</th><th>Purchase Details</th><th className="text-right">Amount</th></tr>
+                </thead>
+                <tbody>
+                  {purchaseEntries.map((entry, idx) => (
+                    <tr key={entry._id || idx}>
+                      <td className="text-sm text-slate-600">{entry.date || "-"}</td>
+                      <td className="font-mono text-xs text-brand-600">{entry.bookingId || "-"}</td>
+                      <td className="text-sm text-slate-700">
+                        {(entry.lineItems || []).length > 0 ? (
+                          <div className="space-y-1">
+                            {(entry.lineItems || []).map((line, lineIdx) => (
+                              <div key={lineIdx} className="text-xs">
+                                <span className="font-medium text-slate-700">{line.description || line.serviceType || "Line item"}</span>
+                                <span className="text-slate-400"> - {line.qty || 0} x Rs. {fmt(line.rate)} = Rs. {fmt(line.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          entry.description || "-"
+                        )}
+                      </td>
+                      <td className="text-right font-semibold text-red-600">Rs. {fmt(entry.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -469,6 +523,11 @@ export default function PurchaseRecordDetailPage() {
         <AddModal
           mode={entryModal}
           initialVendor={currentVendor}
+          initialTransaction={latestBookingEntry ? {
+            bookingId: latestBookingEntry.bookingId,
+            clientName: latestBookingEntry.clientName || "",
+          } : null}
+          bookingOptions={bookingOptions}
           onClose={() => setEntryModal(null)}
           onSaved={() => {
             setEntryModal(null);

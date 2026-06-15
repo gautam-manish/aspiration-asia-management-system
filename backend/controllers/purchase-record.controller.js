@@ -530,7 +530,7 @@ export const updatePurchaseRecord = async (req, res) => {
 // ─────────────────────────────────────────────
 export const updateTransactionAttachment = async (req, res) => {
   try {
-    const { attachment } = req.body;
+    const { attachment, taxAmount } = req.body;
     const record = await PurchaseRecord.findById(req.params.id);
 
     if (!record) {
@@ -548,7 +548,8 @@ export const updateTransactionAttachment = async (req, res) => {
       });
     }
 
-    transaction.attachment = cleanAttachment(attachment);
+    if (attachment !== undefined) transaction.attachment = cleanAttachment(attachment);
+    if (taxAmount !== undefined) transaction.taxAmount = Number(taxAmount) || 0;
     await record.save();
 
     return res.status(200).json({

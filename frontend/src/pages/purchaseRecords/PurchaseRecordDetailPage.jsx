@@ -76,6 +76,8 @@ export default function PurchaseRecordDetailPage() {
   const [pdfFiscal,  setPdfFiscal]  = useState("");
   const [txn,        setTxn]        = useState({ date: "", refNo: "", bookingId: "", clientName: "", description: "", amount: "", bank: "", type: "cr", attachment: null });
   const [saving,     setSaving]     = useState(false);
+  const [taxInvoiceModal, setTaxInvoiceModal] = useState(null);
+  const [taxInvoiceForm, setTaxInvoiceForm] = useState({ taxAmount: "", attachment: null });
   const [taxInvoiceSaving, setTaxInvoiceSaving] = useState(false);
   const [bookingLookup, setBookingLookup] = useState(false);
 
@@ -318,11 +320,6 @@ export default function PurchaseRecordDetailPage() {
     ).values()
   );
   const latestBookingEntry = [...sortedTxns].reverse().find((entry) => entry.bookingId);
-  const taxInvoiceEntry = [...purchaseEntries].reverse().find((entry) =>
-    entry.refNo || entry.attachment?.url || Number(entry.taxAmount || 0) > 0
-  );
-  const taxInvoiceTargetEntry = taxInvoiceEntry || [...purchaseEntries].reverse()[0];
-  const purchaseTaxTotal = purchaseEntries.reduce((sum, entry) => sum + (Number(entry.taxAmount) || 0), 0);
   const currentVendor = {
     _id: record.vendorId || "",
     contactPerson: record.debtorName || "",
@@ -345,20 +342,29 @@ export default function PurchaseRecordDetailPage() {
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
     qc.invalidateQueries({ queryKey: ["bank-account"] });
   };
-  const updateTaxInvoiceSlip = async (attachment) => {
-    if (!taxInvoiceTargetEntry?._id) {
-      toast.error("Create a purchase entry before adding a tax invoice slip");
-      return;
-    }
+  const openTaxInvoiceModal = (entry) => {
+    setTaxInvoiceModal(entry);
+    setTaxInvoiceForm({
+      taxAmount: entry?.taxAmount ? String(entry.taxAmount) : "",
+      attachment: entry?.attachment?.url ? entry.attachment : null,
+    });
+  };
+  const saveTaxInvoice = async (e) => {
+    e.preventDefault();
+    if (!taxInvoiceModal?._id) return;
     setTaxInvoiceSaving(true);
     try {
-      const { data } = await purchaseRecordAPI.updateTransactionAttachment(record._id, taxInvoiceTargetEntry._id, { attachment });
+      const { data } = await purchaseRecordAPI.updateTransactionAttachment(record._id, taxInvoiceModal._id, {
+        taxAmount: Number(taxInvoiceForm.taxAmount) || 0,
+        attachment: taxInvoiceForm.attachment,
+      });
       if (data?.data) {
         setRecord(data.data);
         qc.setQueryData(["purchase-record", id], data.data);
       }
       refreshFinanceViews();
-      toast.success(attachment?.url ? "Final tax invoice slip added" : "Final tax invoice slip removed");
+      toast.success("Tax invoice updated");
+      setTaxInvoiceModal(null);
     } catch (err) {
       notifyError(err);
     } finally {
@@ -406,8 +412,8 @@ export default function PurchaseRecordDetailPage() {
           <h3 className="font-semibold text-slate-700">Purchase Entries</h3>
           <div className="flex items-center gap-2">
             <span className="badge badge-blue">{purchaseEntries.length} entries</span>
-            <button type="button" onClick={() => setEntryModal("purchase")} className="btn-secondary text-xs">
-              <i className="fa fa-edit" /> Edit Purchase Entries
+            <button type="button" onClick={() => setEntryModal("payment")} className="btn-secondary text-xs">
+              <i className="fa fa-plus" /> Add Payment Entry
             </button>
           </div>
         </div>
@@ -415,36 +421,10 @@ export default function PurchaseRecordDetailPage() {
           <div className="card-body text-sm text-slate-400">No purchase entries recorded for this vendor.</div>
         ) : (
           <div>
-            <div className="card-body border-b border-slate-100">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1">Tax Invoice</p>
-                    <p className="text-sm font-semibold text-slate-800">{taxInvoiceEntry?.refNo || "Not uploaded yet"}</p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Invoice Date: {taxInvoiceEntry?.date || "-"} | Tax Amount: Rs. {fmt(purchaseTaxTotal)}
-                    </p>
-                  </div>
-                  <div className="w-full md:w-80">
-                    {taxInvoiceSaving ? (
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500 flex items-center justify-center gap-2">
-                        <i className="fa fa-spinner fa-spin" /> Saving tax invoice slip...
-                      </div>
-                    ) : (
-                      <AttachmentField
-                        label="Final Tax Invoice Slip"
-                        attachment={taxInvoiceEntry?.attachment}
-                        onChange={updateTaxInvoiceSlip}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
             <div className="table-wrapper">
               <table className="table">
                 <thead>
-                  <tr><th>Date</th><th>Booking</th><th>Purchase Details</th><th className="text-right">Amount</th></tr>
+                  <tr><th>Date</th><th>Booking</th><th>Purchase Details</th><th>Tax Amount</th><th>Tax Invoice Slip</th><th className="text-right">Amount</th><th className="text-right">Action</th></tr>
                 </thead>
                 <tbody>
                   {purchaseEntries.map((entry, idx) => (
@@ -465,7 +445,24 @@ export default function PurchaseRecordDetailPage() {
                           entry.description || "-"
                         )}
                       </td>
+                      <td className="text-sm font-semibold text-slate-700">Rs. {fmt(entry.taxAmount)}</td>
+                      <td>
+                        {entry.attachment?.url ? (
+                          <a href={resolveUploadUrl(entry.attachment.url)} target="_blank" rel="noreferrer" className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1">
+                            <i className={`fa ${/^application\/pdf/.test(entry.attachment.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+                            {entry.attachment.fileName || "View tax invoice"}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-slate-400">Not added</span>
+                        )}
+                      </td>
                       <td className="text-right font-semibold text-red-600">Rs. {fmt(entry.amount)}</td>
+                      <td className="text-right">
+                        <button type="button" onClick={() => openTaxInvoiceModal(entry)} className="btn-secondary text-xs whitespace-nowrap">
+                          <i className={`fa ${entry.attachment?.url || Number(entry.taxAmount || 0) > 0 ? "fa-edit" : "fa-plus"}`} />
+                          {entry.attachment?.url || Number(entry.taxAmount || 0) > 0 ? "Edit Tax Invoice" : "Add Tax Invoice"}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -474,6 +471,48 @@ export default function PurchaseRecordDetailPage() {
           </div>
         )}
       </div>
+
+      {taxInvoiceModal && (
+        <div className="modal-overlay">
+          <div className="modal max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 className="font-display font-semibold text-slate-800">Add Tax Invoice</h2>
+                <p className="text-xs text-slate-400 mt-1">{taxInvoiceModal.bookingId || "No booking"} | Rs. {fmt(taxInvoiceModal.amount)}</p>
+              </div>
+              <button onClick={() => setTaxInvoiceModal(null)} className="btn-ghost p-1"><i className="fa fa-times" /></button>
+            </div>
+            <form onSubmit={saveTaxInvoice}>
+              <div className="modal-body space-y-4">
+                <Field label="Tax Amount">
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={taxInvoiceForm.taxAmount}
+                    onChange={(e) => setTaxInvoiceForm((form) => ({ ...form, taxAmount: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                </Field>
+                <Field label="Tax Invoice Slip">
+                  <AttachmentField
+                    label="Tax Invoice Slip"
+                    attachment={taxInvoiceForm.attachment}
+                    onChange={(attachment) => setTaxInvoiceForm((form) => ({ ...form, attachment }))}
+                  />
+                </Field>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={() => setTaxInvoiceModal(null)} className="btn-secondary">Cancel</button>
+                <button type="submit" disabled={taxInvoiceSaving} className="btn-primary">
+                  <i className="fa fa-save" /> {taxInvoiceSaving ? "Saving..." : "Save Tax Invoice"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Payment Entries */}
       <div className="card">

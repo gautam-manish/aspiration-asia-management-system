@@ -7,8 +7,10 @@ import {
   addTransaction,
   updatePurchaseRecord,
   deletePurchaseRecord,
+  uploadPurchaseRecordAttachment,
   generateLedgerPdf,
 } from "../controllers/purchase-record.controller.js";
+import { uploadPurchaseRecordAttachment as uploadPurchaseRecordAttachmentMiddleware } from "../middleware/upload.middleware.js";
 
 const router = express.Router();
 
@@ -18,6 +20,22 @@ const router = express.Router();
 
 router.route("/by-debtor/:debtorName")
   .get(getPurchaseRecordByDebtor); // GET /api/purchaserecords/by-debtor/:name
+
+router.post(
+  "/upload-attachment",
+  (req, res, next) => {
+    uploadPurchaseRecordAttachmentMiddleware.single("slip")(req, res, (err) => {
+      if (!err) return next();
+      const status = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+      return res.status(status).json({
+        success: false,
+        message: err.code === "LIMIT_FILE_SIZE" ? "File is too large. Maximum size is 1 MB." : err.message,
+        data: null,
+      });
+    });
+  },
+  uploadPurchaseRecordAttachment,
+);
 
 router.route("/")
   .get(getAllPurchaseRecords)       // GET  /api/purchaserecords?search=abc

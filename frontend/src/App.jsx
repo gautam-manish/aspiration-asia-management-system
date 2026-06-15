@@ -36,6 +36,7 @@ const AuditLogsPage = lazy(() => import("./pages/auditLogs/AuditLogsPage"));
 const CalculatorPage = lazy(() => import("./pages/calculator/CalculatorPage"));
 const SundryPage = lazy(() => import("./pages/sundry/SundryPage"));
 const SundryDetailPage = lazy(() => import("./pages/sundry/SundryDetailPage"));
+const VendorsPage = lazy(() => import("./pages/vendors/VendorsPage"));
 const SalesRecordsPage = lazy(() => import("./pages/salesRecords/SalesRecordsPage"));
 const SalesRecordDetailPage = lazy(() => import("./pages/salesRecords/SalesRecordDetailPage"));
 const PurchaseRecordsPage = lazy(() => import("./pages/purchaseRecords/PurchaseRecordsPage"));
@@ -85,6 +86,7 @@ export default function App() {
         <Route path="/calculator"                element={<P><CalculatorPage /></P>} />
         <Route path="/sundry"                    element={<P><SundryPage /></P>} />
         <Route path="/sundry/:id"                element={<P><SundryDetailPage /></P>} />
+        <Route path="/vendors"                   element={<P><VendorsPage /></P>} />
         <Route path="/sales-records"             element={<P><SalesRecordsPage /></P>} />
         <Route path="/sales-records/:id"         element={<P><SalesRecordDetailPage /></P>} />
         <Route path="/purchase-records"          element={<P><PurchaseRecordsPage /></P>} />

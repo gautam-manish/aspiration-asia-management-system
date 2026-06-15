@@ -32,6 +32,10 @@ fs.mkdirSync(ADVANCE_ROOT, { recursive: true });
 const VENDOR_TAX_INVOICE_ROOT = path.join(UPLOAD_BASE, "vendor-tax-invoices");
 fs.mkdirSync(VENDOR_TAX_INVOICE_ROOT, { recursive: true });
 
+// Where purchase-record invoice/payment attachments live.
+const PURCHASE_RECORD_ATTACHMENT_ROOT = path.join(UPLOAD_BASE, "purchase-record-attachments");
+fs.mkdirSync(PURCHASE_RECORD_ATTACHMENT_ROOT, { recursive: true });
+
 const ALLOWED_MIMES = new Set([
   "application/pdf",
   "image/jpeg", // covers .jpg and .jpeg
@@ -60,6 +64,15 @@ const advanceStorage = multer.diskStorage({
 
 const vendorTaxInvoiceStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, VENDOR_TAX_INVOICE_ROOT),
+  filename: (_req, file, cb) => {
+    const rand = crypto.randomBytes(6).toString("hex");
+    const ext  = path.extname(file.originalname || "").toLowerCase() || ".bin";
+    cb(null, `${Date.now()}-${rand}${ext}`);
+  },
+});
+
+const purchaseRecordAttachmentStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, PURCHASE_RECORD_ATTACHMENT_ROOT),
   filename: (_req, file, cb) => {
     const rand = crypto.randomBytes(6).toString("hex");
     const ext  = path.extname(file.originalname || "").toLowerCase() || ".bin";
@@ -101,4 +114,12 @@ export const uploadVendorTaxInvoiceSlip = multer({
   },
 });
 
-export { UPLOAD_BASE, UPLOAD_ROOT, ADVANCE_ROOT, VENDOR_TAX_INVOICE_ROOT };
+export const uploadPurchaseRecordAttachment = multer({
+  storage: purchaseRecordAttachmentStorage,
+  fileFilter,
+  limits: {
+    fileSize: 1 * 1024 * 1024,
+  },
+});
+
+export { UPLOAD_BASE, UPLOAD_ROOT, ADVANCE_ROOT, VENDOR_TAX_INVOICE_ROOT, PURCHASE_RECORD_ATTACHMENT_ROOT };

@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { bookingAPI, purchaseRecordAPI } from "../../api";
+import { bookingAPI, purchaseRecordAPI, resolveUploadUrl } from "../../api";
 import { notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
@@ -9,21 +9,92 @@ import { usePurchaseRecordsPaginated, usePurchaseRecordMutations, useSundryDropd
 import toast from "react-hot-toast";
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+const ATTACHMENT_ACCEPT = ".pdf,.jpg,.jpeg,application/pdf,image/jpeg";
+const today = () => new Date().toISOString().slice(0, 10);
+const EMPTY_LINE = { serviceType: "hotel", description: "", qty: 1, rate: "", amount: "" };
 
-function AddModal({ onClose, onSaved }) {
+const fmtSize = (bytes = 0) => {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+function AttachmentField({ label, attachment, onChange }) {
+  const [busy, setBusy] = useState(false);
+
+  const upload = async (file) => {
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      toast.error("File is too large. Please upload under 1 MB");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data } = await purchaseRecordAPI.uploadAttachment(file);
+      onChange(data?.data || null);
+      toast.success("Attachment uploaded");
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (attachment?.url) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 flex items-center gap-2 min-w-0">
+        <i className={`fa ${/^application\/pdf/.test(attachment.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+        <a href={resolveUploadUrl(attachment.url)} target="_blank" rel="noreferrer" className="font-medium text-brand-700 truncate hover:underline" title={attachment.fileName}>
+          {attachment.fileName || label}
+        </a>
+        <span className="text-slate-400 ml-auto whitespace-nowrap text-xs">{fmtSize(attachment.size)}</span>
+        <button type="button" onClick={() => onChange(null)} disabled={busy} className="btn-ghost text-red-400 hover:text-red-600 p-1" title="Remove attachment">
+          <i className="fa fa-times" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <label className="rounded-xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-pointer flex items-center justify-center gap-2">
+      <i className={`fa ${busy ? "fa-spinner fa-spin" : "fa-paperclip"}`} />
+      <span>{busy ? "Uploading..." : `Attach ${label} (PDF / JPG, max 1 MB)`}</span>
+      <input type="file" className="hidden" accept={ATTACHMENT_ACCEPT} disabled={busy} onChange={(e) => upload(e.target.files?.[0])} />
+    </label>
+  );
+}
+
+export function AddModal({ mode = "purchase", initialVendor = null, onClose, onSaved }) {
+  const isPayment = mode === "payment";
+  const initialVendorLabel = initialVendor
+    ? initialVendor.contactPerson + (initialVendor.companyName ? ` (${initialVendor.companyName})` : "")
+    : "";
   // Cached sundry list — fetched once and reused on every modal open.
   const qc = useQueryClient();
   const { data: vendors = [], refetch: refetchVendors } = useSundryDropdown({ role: "vendor" });
   const { data: bankList = [] } = useBankAccounts();
-  const [query,    setQuery]    = useState("");
-  const [selected, setSelected] = useState(null);
+  const [query,    setQuery]    = useState(initialVendorLabel);
+  const [selected, setSelected] = useState(initialVendor);
   const [showDrop, setShowDrop] = useState(false);
-  const [txn,      setTxn]      = useState({ date: "", refNo: "", bookingId: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
+  const [txn,      setTxn]      = useState({
+    date: today(),
+    refNo: "",
+    bookingId: "",
+    clientName: "",
+    description: "",
+    amount: "",
+    bank: "",
+    type: isPayment ? "dr" : "cr",
+    attachment: null,
+  });
+  const [taxAmount, setTaxAmount] = useState("");
+  const [lines, setLines] = useState([{ ...EMPTY_LINE }]);
   const [loading,  setLoading]  = useState(false);
   const [bookingLookup, setBookingLookup] = useState(false);
   // Holds the existing PurchaseRecord doc when one is found for the selected vendor.
   // null = unknown, false = no existing account (new ledger), object = existing.
-  const [existing, setExisting] = useState(null);
+  const [existing, setExisting] = useState(initialVendor?.existingRecord || null);
   const [checking, setChecking] = useState(false);
 
   useEffect(() => { refetchVendors(); }, [refetchVendors]);
@@ -33,6 +104,11 @@ function AddModal({ onClose, onSaved }) {
     (d.companyName || "").toLowerCase().includes(query.toLowerCase())
   );
   const selectedBank = bankList.find((b) => b.bankName === txn.bank);
+  const totals = useMemo(() => {
+    const subtotal = lines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+    const tax = Number(taxAmount) || 0;
+    return { subtotal, tax, total: subtotal + tax };
+  }, [lines, taxAmount]);
 
   // Look up an existing ledger by vendor name. Debounced lightly via blur/select.
   const checkExistingByName = async (name) => {
@@ -64,6 +140,17 @@ function AddModal({ onClose, onSaved }) {
 
   const setT = (k, v) => setTxn((t) => ({ ...t, [k]: v }));
 
+  const updateLine = (idx, key, value) => {
+    setLines((current) => current.map((line, i) => {
+      if (i !== idx) return line;
+      const next = { ...line, [key]: value };
+      const qty = Number(next.qty) || 0;
+      const rate = Number(next.rate) || 0;
+      if (key === "qty" || key === "rate") next.amount = qty * rate || "";
+      return next;
+    }));
+  };
+
   const fetchBooking = async () => {
     const bookingId = (txn.bookingId || "").trim();
     if (!bookingId) { toast.error("Booking ID required"); return; }
@@ -90,15 +177,21 @@ function AddModal({ onClose, onSaved }) {
     const debtorNameClean = selected.contactPerson;
     if (!txn.bookingId.trim()) { toast.error("Booking ID required"); return; }
     if (!txn.date)   { toast.error("Transaction date required"); return; }
-    if (!txn.amount || Number(txn.amount) <= 0) { toast.error("Amount must be > 0"); return; }
-    if (txn.type === "dr" && !txn.bank) { toast.error("Select a bank account for debit entry"); return; }
-    if (txn.type === "dr" && selectedBank && Number(txn.amount) > Number(selectedBank.balance || 0)) {
+    if (!isPayment && !lines.some((line) => String(line.description || "").trim() && Number(line.amount) >= 0)) {
+      toast.error("At least one purchase line is required");
+      return;
+    }
+    const amount = isPayment ? Number(txn.amount) : Number(totals.total);
+    if (!amount || amount <= 0) { toast.error("Amount must be > 0"); return; }
+    if (isPayment && !txn.bank) { toast.error("Select a bank account for payment entry"); return; }
+    if (isPayment && selectedBank && amount > Number(selectedBank.balance || 0)) {
       toast.error(`Amount exceeds selected bank balance (${fmt(selectedBank.balance)})`);
       return;
     }
     setLoading(true);
     try {
       const { data } = await purchaseRecordAPI.create({
+        vendorId:       selected?._id || "",
         debtorName:    debtorNameClean,
         debtorCompany: selected?.companyName  || existing?.debtorCompany || "",
         debtorPan:     selected?.panVatGst    || existing?.debtorPan     || "",
@@ -108,13 +201,26 @@ function AddModal({ onClose, onSaved }) {
         // For new ledgers, send opening. For existing ledgers, omit it
         // so the controller doesn't try to override (controller only honors it on create anyway).
         ...(existing ? {} : { openingBalance: Number(selected.openingBalance) || 0 }),
-        transaction:   { ...txn, bank: txn.type === "dr" ? txn.bank : "", amount: Number(txn.amount) },
+        transaction:   {
+          ...txn,
+          bank: isPayment ? txn.bank : "",
+          type: isPayment ? "dr" : "cr",
+          amount,
+          description: isPayment
+            ? txn.description
+            : (txn.description || lines.map((line) => line.description).filter(Boolean).join(", ")),
+          lineItems: isPayment ? undefined : lines,
+          taxAmount: isPayment ? undefined : Number(taxAmount) || 0,
+        },
       });
       if (data?.data?._id) qc.setQueryData(["purchase-record", data.data._id], data.data);
       toast.success(existing ? "Entry added to existing ledger ✓" : "New ledger created ✓");
       qc.invalidateQueries({ queryKey: ["purchase-records"] });
       qc.invalidateQueries({ queryKey: ["customer-payments"] });
       qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+      qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+      qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+      qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
       qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
       qc.invalidateQueries({ queryKey: ["journal-entries"] });
       qc.invalidateQueries({ queryKey: ["bank-accounts"] });
@@ -129,9 +235,9 @@ function AddModal({ onClose, onSaved }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal ${isPayment ? "max-w-2xl" : "max-w-4xl"}`} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="font-display font-semibold text-slate-800">Add Purchase Entry</h2>
+          <h2 className="font-display font-semibold text-slate-800">{isPayment ? "Add Payment Entry" : "Add Purchase Entry"}</h2>
           <button onClick={onClose} className="btn-ghost p-1"><i className="fa fa-times" /></button>
         </div>
         <form onSubmit={handleSubmit}>
@@ -203,16 +309,88 @@ function AddModal({ onClose, onSaved }) {
 
             </div>
 
+            {!isPayment && (
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Field label="Vendor Tax Invoice #">
+                    <input className="input" value={txn.refNo} onChange={(e) => setT("refNo", e.target.value)} />
+                  </Field>
+                  <Field label="Entry / Invoice Date *">
+                    <input className="input" type="date" value={txn.date} onChange={(e) => setT("date", e.target.value)} required />
+                  </Field>
+                  <Field label="Booking ID *">
+                    <div className="flex gap-2">
+                      <input className="input flex-1" value={txn.bookingId} onChange={(e) => setT("bookingId", e.target.value)} placeholder="ASA..." required />
+                      <button type="button" onClick={fetchBooking} disabled={bookingLookup || !txn.bookingId.trim()} className="btn-secondary text-xs whitespace-nowrap">
+                        {bookingLookup ? "Fetching..." : <><i className="fa fa-search" /> Fetch</>}
+                      </button>
+                    </div>
+                  </Field>
+                  <Field label="Tax Amount">
+                    <input className="input" type="number" min="0" step="any" value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} />
+                  </Field>
+                  <Field label="Final Tax Invoice Slip" className="sm:col-span-2">
+                    <AttachmentField label="Purchase Invoice" attachment={txn.attachment} onChange={(attachment) => setT("attachment", attachment)} />
+                  </Field>
+                  <Field label="Notes" className="sm:col-span-3">
+                    <textarea className="input min-h-[76px]" value={txn.description} onChange={(e) => setT("description", e.target.value)} />
+                  </Field>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Cost Lines</p>
+                    <button type="button" className="btn-secondary text-xs" onClick={() => setLines([...lines, { ...EMPTY_LINE }])}>
+                      <i className="fa fa-plus" /> Line
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {lines.map((line, idx) => (
+                      <div key={idx} className="grid grid-cols-1 md:grid-cols-[130px_minmax(220px,1fr)_90px_130px_140px_42px] gap-2 items-end rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <Field label="Service">
+                          <select className="input" value={line.serviceType} onChange={(e) => updateLine(idx, "serviceType", e.target.value)}>
+                            {["hotel", "transport", "guide", "activity", "flight", "visa", "meal", "other"].map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </Field>
+                        <Field label="Description">
+                          <input className="input" value={line.description} onChange={(e) => updateLine(idx, "description", e.target.value)} placeholder="Description" />
+                        </Field>
+                        <Field label="Qty">
+                          <input className="input" type="number" min="0" step="any" value={line.qty} onChange={(e) => updateLine(idx, "qty", e.target.value)} />
+                        </Field>
+                        <Field label="Rate">
+                          <input className="input" type="number" min="0" step="any" value={line.rate} onChange={(e) => updateLine(idx, "rate", e.target.value)} placeholder="0.00" />
+                        </Field>
+                        <Field label="Total">
+                          <input className="input" type="number" min="0" step="any" value={line.amount} onChange={(e) => updateLine(idx, "amount", e.target.value)} placeholder="0.00" />
+                        </Field>
+                        <button type="button" className="btn-ghost text-red-400 h-10" onClick={() => setLines(lines.filter((_, i) => i !== idx))} disabled={lines.length === 1} title="Remove line">
+                          <i className="fa fa-trash" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="card card-body !py-3"><p className="text-xs text-slate-500">Subtotal</p><p className="font-bold">{fmt(totals.subtotal)}</p></div>
+                  <div className="card card-body !py-3"><p className="text-xs text-slate-500">Tax</p><p className="font-bold">{fmt(totals.tax)}</p></div>
+                  <div className="card card-body !py-3"><p className="text-xs text-slate-500">Total</p><p className="font-bold text-red-600">{fmt(totals.total)}</p></div>
+                </div>
+              </div>
+            )}
+
+            {isPayment && (<>
             {/* Transaction */}
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Transaction Details</p>
 
               {/* Entry type */}
-              <div className="mb-3">
+              {false && <div className="mb-3">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2">Entry Type *</p>
                 <div className="flex gap-3">
-                  {[["cr","Credit (CR)","badge-green"], ["dr","Debit (DR)","badge-red"]].map(([val, lbl, cls]) => (
-                    <button key={val} type="button" onClick={() => { setT("type", val); if (val === "cr") setT("bank", ""); }}
+                  {[["cr","Purchase Entry (CR)"], ["dr","Payment Entry (DR)"]].map(([val, lbl]) => (
+                    <button key={val} type="button" onClick={() => { setTxn((t) => ({ ...t, type: val, bank: val === "cr" ? "" : t.bank, attachment: null })); }}
                       className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
                         txn.type === val ? (val === "cr" ? "border-green-500 bg-green-50 text-green-700" : "border-red-500 bg-red-50 text-red-700") : "border-slate-200 text-slate-500"
                       }`}>
@@ -220,7 +398,7 @@ function AddModal({ onClose, onSaved }) {
                     </button>
                   ))}
                 </div>
-              </div>
+              </div>}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="Date *">
@@ -246,6 +424,13 @@ function AddModal({ onClose, onSaved }) {
                 <Field label="Description" className="col-span-2">
                   <textarea className="input min-h-[90px]" value={txn.description} onChange={(e) => setT("description", e.target.value)} />
                 </Field>
+                <Field label={txn.type === "cr" ? "Purchase Invoice" : "Payment Slip"} className="sm:col-span-2">
+                  <AttachmentField
+                    label={txn.type === "cr" ? "Purchase Invoice" : "Payment Slip"}
+                    attachment={txn.attachment}
+                    onChange={(attachment) => setT("attachment", attachment)}
+                  />
+                </Field>
                 {txn.type === "dr" && (
                   <Field label="Bank Account *" className="sm:col-span-2 min-w-0">
                   <select className="input min-w-0 max-w-full truncate" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} required>
@@ -259,6 +444,7 @@ function AddModal({ onClose, onSaved }) {
                 )}
               </div>
             </div>
+            </>)}
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
@@ -277,7 +463,7 @@ export default function PurchaseRecordsPage() {
   const qc                   = useQueryClient();
   const [search,   setSearch]   = useState("");
   const [page,     setPage]     = useState(1);
-  const [modal,    setModal]    = useState(false);
+  const [modal,    setModal]    = useState(null);
   const [confirm,  setConfirm]  = useState(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -299,6 +485,9 @@ export default function PurchaseRecordsPage() {
     qc.invalidateQueries({ queryKey: ["customer-payments"] });
     qc.invalidateQueries({ queryKey: ["customer-payment"] });
     qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+    qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
     qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
     qc.invalidateQueries({ queryKey: ["journal-entries"] });
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
@@ -325,9 +514,14 @@ export default function PurchaseRecordsPage() {
           <h1 className="page-title">Purchase Records</h1>
           <p className="page-subtitle">Creditor / vendor ledger management</p>
         </div>
-        <button onClick={() => setModal(true)} className="btn-primary">
-          <i className="fa fa-plus" /> Add Entry
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setModal("purchase")} className="btn-primary">
+            <i className="fa fa-file-invoice-dollar" /> Add Purchase Entry
+          </button>
+          <button onClick={() => setModal("payment")} className="btn-secondary">
+            <i className="fa fa-money-check-alt" /> Add Payment Entry
+          </button>
+        </div>
       </div>
 
       {/* Summary (current page) */}
@@ -349,7 +543,7 @@ export default function PurchaseRecordsPage() {
         </div>
 
         {loading ? <div className="p-8"><PageLoader /></div> : records.length === 0 ? (
-          <Empty icon="fa-book" message="No purchase records found" action={<button onClick={() => setModal(true)} className="btn-primary">Add first entry</button>} />
+          <Empty icon="fa-book" message="No purchase records found" action={<button onClick={() => setModal("purchase")} className="btn-primary">Add first purchase entry</button>} />
         ) : (
           <>
             <div className="table-wrapper">
@@ -403,7 +597,7 @@ export default function PurchaseRecordsPage() {
         )}
       </div>
 
-      {modal && <AddModal onClose={() => setModal(false)} onSaved={() => { setModal(false); refresh(); }} />}
+      {modal && <AddModal mode={modal} onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh(); }} />}
 
       <ConfirmModal
         open={!!confirm}

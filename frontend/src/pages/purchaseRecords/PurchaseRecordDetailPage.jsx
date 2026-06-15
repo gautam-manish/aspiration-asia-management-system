@@ -1,13 +1,66 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { bookingAPI, purchaseRecordAPI } from "../../api";
+import { bookingAPI, purchaseRecordAPI, resolveUploadUrl } from "../../api";
 import { formatDate, notifyError } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
 import { usePurchaseRecord, useBankAccounts } from "../../hooks/useApiQueries";
+import { AddModal } from "./PurchaseRecordsPage";
 import toast from "react-hot-toast";
 
 const fmt = (n) => Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+const ATTACHMENT_ACCEPT = ".pdf,.jpg,.jpeg,application/pdf,image/jpeg";
+
+const fmtSize = (bytes = 0) => {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+function AttachmentField({ label, attachment, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const upload = async (file) => {
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      toast.error("File is too large. Please upload under 1 MB");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data } = await purchaseRecordAPI.uploadAttachment(file);
+      onChange(data?.data || null);
+      toast.success("Attachment uploaded");
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (attachment?.url) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 flex items-center gap-2 min-w-0">
+        <i className={`fa ${/^application\/pdf/.test(attachment.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+        <a href={resolveUploadUrl(attachment.url)} target="_blank" rel="noreferrer" className="font-medium text-brand-700 truncate hover:underline" title={attachment.fileName}>
+          {attachment.fileName || label}
+        </a>
+        <span className="text-slate-400 ml-auto whitespace-nowrap text-xs">{fmtSize(attachment.size)}</span>
+        <button type="button" onClick={() => onChange(null)} disabled={busy} className="btn-ghost text-red-400 hover:text-red-600 p-1" title="Remove attachment">
+          <i className="fa fa-times" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <label className="rounded-xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 px-3 py-3 text-sm text-slate-500 cursor-pointer flex items-center justify-center gap-2">
+      <i className={`fa ${busy ? "fa-spinner fa-spin" : "fa-paperclip"}`} />
+      <span>{busy ? "Uploading..." : `Attach ${label} (PDF / JPG, max 1 MB)`}</span>
+      <input type="file" className="hidden" accept={ATTACHMENT_ACCEPT} disabled={busy} onChange={(e) => upload(e.target.files?.[0])} />
+    </label>
+  );
+}
 
 export default function PurchaseRecordDetailPage() {
   const { id }    = useParams();
@@ -17,11 +70,12 @@ export default function PurchaseRecordDetailPage() {
   const [record,     setRecord]     = useState(null);
   const [loading,    setLoading]    = useState(true);
   const [addModal,   setAddModal]   = useState(false);
+  const [entryModal, setEntryModal] = useState(null);
   const [pdfModal,   setPdfModal]   = useState(false);
   const [pdfFrom,    setPdfFrom]    = useState("");
   const [pdfTo,      setPdfTo]      = useState("");
   const [pdfFiscal,  setPdfFiscal]  = useState("");
-  const [txn,        setTxn]        = useState({ date: "", refNo: "", bookingId: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
+  const [txn,        setTxn]        = useState({ date: "", refNo: "", bookingId: "", clientName: "", description: "", amount: "", bank: "", type: "cr", attachment: null });
   const [saving,     setSaving]     = useState(false);
   const [bookingLookup, setBookingLookup] = useState(false);
 
@@ -77,11 +131,14 @@ export default function PurchaseRecordDetailPage() {
       }
       toast.success("Transaction added ✓");
       setAddModal(false);
-      setTxn({ date: "", refNo: "", bookingId: "", clientName: "", description: "", amount: "", bank: "", type: "cr" });
+      setTxn({ date: "", refNo: "", bookingId: "", clientName: "", description: "", amount: "", bank: "", type: "cr", attachment: null });
       loadRecord();
       qc.invalidateQueries({ queryKey: ["purchase-records"] });
       qc.invalidateQueries({ queryKey: ["customer-payments"] });
       qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+      qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+      qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+      qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
       qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
       qc.invalidateQueries({ queryKey: ["journal-entries"] });
       qc.invalidateQueries({ queryKey: ["bank-accounts"] });
@@ -246,7 +303,32 @@ export default function PurchaseRecordDetailPage() {
   if (!record) return <div className="text-center py-20 text-slate-400">Record not found</div>;
 
   const sortedTxns = [...(record.transactions || [])].sort((a, b) => a.date.localeCompare(b.date));
-  let runBal = Number(record.openingBalance || 0);
+  const purchaseEntries = sortedTxns.filter((t) => t.type === "cr");
+  const paymentEntries = sortedTxns.filter((t) => t.type === "dr");
+  const purchaseTotal = purchaseEntries.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const paymentTotal = paymentEntries.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const currentVendor = {
+    _id: record.vendorId || "",
+    contactPerson: record.debtorName || "",
+    companyName: record.debtorCompany || "",
+    panVatGst: record.debtorPan || "",
+    address: record.debtorAddress || "",
+    phone: record.debtorPhone || "",
+    email: record.debtorEmail || "",
+    openingBalance: record.openingBalance || 0,
+    existingRecord: record,
+  };
+  const refreshFinanceViews = () => {
+    loadRecord();
+    qc.invalidateQueries({ queryKey: ["purchase-records"] });
+    qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+    qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
+    qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["journal-entries"] });
+    qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+    qc.invalidateQueries({ queryKey: ["bank-account"] });
+  };
 
   return (
     <div>
@@ -258,25 +340,16 @@ export default function PurchaseRecordDetailPage() {
             {record.debtorCompany && <p className="page-subtitle">{record.debtorCompany}</p>}
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => { setPdfFiscal(record.fiscalYear || ""); setPdfModal(true); }} className="btn-secondary">
-            <i className="fa fa-file-pdf" /> PDF Report
-          </button>
-          <button onClick={() => setAddModal(true)} className="btn-primary">
-            <i className="fa fa-plus" /> Add Transaction
-          </button>
-        </div>
       </div>
 
-      {/* Balance Summary */}
+      {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {[["Opening Balance", record.openingBalance, "text-slate-800"],["Total Debit (DR)", record.totalDebit, "text-red-600"],["Total Credit (CR)", record.totalCredit, "text-green-600"],["Closing Balance", null, record.closingBalance >= 0 ? "text-red-600" : "text-green-600"]].map(([lbl, val, cls]) => (
+        {[["Purchase Entries", purchaseTotal, "text-red-600"],["Payment Entries", paymentTotal, "text-green-600"],["Outstanding", purchaseTotal - paymentTotal, purchaseTotal - paymentTotal >= 0 ? "text-red-600" : "text-green-600"],["Total Documents", sortedTxns.length, "text-slate-800"]].map(([lbl, val, cls]) => (
           <div key={lbl} className="card card-body !py-4">
             <p className="text-xs text-slate-500 mb-1">{lbl}</p>
-            {lbl === "Closing Balance"
-              ? <p className={`text-xl font-bold ${cls}`}>Rs. {fmt(Math.abs(record.closingBalance))} <span className="text-sm">{record.closingBalance >= 0 ? "DR" : "CR"}</span></p>
-              : <p className={`text-xl font-bold ${cls}`}>Rs. {fmt(val)}</p>
-            }
+            {lbl === "Total Documents"
+              ? <p className={`text-xl font-bold ${cls}`}>{val}</p>
+              : <p className={`text-xl font-bold ${cls}`}>Rs. {fmt(Math.abs(val))}</p>}
           </div>
         ))}
       </div>
@@ -291,6 +364,120 @@ export default function PurchaseRecordDetailPage() {
         </div>
       </div>
 
+      {/* Purchase Entries */}
+      <div className="card mb-4">
+        <div className="card-header">
+          <h3 className="font-semibold text-slate-700">Purchase Entries</h3>
+          <div className="flex items-center gap-2">
+            <span className="badge badge-blue">{purchaseEntries.length} entries</span>
+            <button type="button" onClick={() => setEntryModal("purchase")} className="btn-secondary text-xs">
+              <i className="fa fa-edit" /> Edit Purchase Entries
+            </button>
+          </div>
+        </div>
+        {purchaseEntries.length === 0 ? (
+          <div className="card-body text-sm text-slate-400">No purchase entries recorded for this vendor.</div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="table">
+              <thead>
+                <tr><th>Date</th><th>Tax Invoice</th><th>Booking</th><th>Purchase Details</th><th>Tax Invoice File</th><th className="text-right">Amount</th></tr>
+              </thead>
+              <tbody>
+                {purchaseEntries.map((entry, idx) => (
+                  <tr key={entry._id || idx}>
+                    <td className="text-sm text-slate-600">{entry.date || "-"}</td>
+                    <td className="font-mono text-xs text-slate-500">{entry.refNo || "-"}</td>
+                    <td className="font-mono text-xs text-brand-600">{entry.bookingId || "-"}</td>
+                    <td className="text-sm text-slate-700">
+                      {(entry.lineItems || []).length > 0 ? (
+                        <div className="space-y-1">
+                          {(entry.lineItems || []).map((line, lineIdx) => (
+                            <div key={lineIdx} className="text-xs">
+                              <span className="font-medium text-slate-700">{line.description || line.serviceType || "Line item"}</span>
+                              <span className="text-slate-400"> - {line.qty || 0} x Rs. {fmt(line.rate)} = Rs. {fmt(line.amount)}</span>
+                            </div>
+                          ))}
+                          {Number(entry.taxAmount || 0) > 0 && <p className="text-xs text-slate-500">Tax: Rs. {fmt(entry.taxAmount)}</p>}
+                        </div>
+                      ) : (
+                        entry.description || "-"
+                      )}
+                    </td>
+                    <td>
+                      {entry.attachment?.url ? (
+                        <a href={resolveUploadUrl(entry.attachment.url)} target="_blank" rel="noreferrer" className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1">
+                          <i className={`fa ${/^application\/pdf/.test(entry.attachment.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+                          {entry.attachment.fileName || "View invoice"}
+                        </a>
+                      ) : "-"}
+                    </td>
+                    <td className="text-right font-semibold text-red-600">Rs. {fmt(entry.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Payment Entries */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="font-semibold text-slate-700">Payment Entries</h3>
+          <div className="flex items-center gap-2">
+            <span className="badge badge-green">{paymentEntries.length} entries</span>
+            <button type="button" onClick={() => setEntryModal("payment")} className="btn-secondary text-xs">
+              <i className="fa fa-plus" /> Add Payment Entry
+            </button>
+          </div>
+        </div>
+        {paymentEntries.length === 0 ? (
+          <div className="card-body text-sm text-slate-400">No payment entries recorded for this vendor.</div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="table">
+              <thead>
+                <tr><th>Date</th><th>Reference</th><th>Booking</th><th>Description</th><th>Bank</th><th>Slip</th><th className="text-right">Amount</th></tr>
+              </thead>
+              <tbody>
+                {paymentEntries.map((entry, idx) => (
+                  <tr key={entry._id || idx}>
+                    <td className="text-sm text-slate-600">{entry.date || "-"}</td>
+                    <td className="font-mono text-xs text-slate-500">{entry.refNo || "-"}</td>
+                    <td className="font-mono text-xs text-brand-600">{entry.bookingId || "-"}</td>
+                    <td className="text-sm text-slate-700">{entry.description || "-"}</td>
+                    <td className="text-sm text-slate-500">{entry.bank || "-"}</td>
+                    <td>
+                      {entry.attachment?.url ? (
+                        <a href={resolveUploadUrl(entry.attachment.url)} target="_blank" rel="noreferrer" className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1">
+                          <i className={`fa ${/^application\/pdf/.test(entry.attachment.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+                          {entry.attachment.fileName || "View slip"}
+                        </a>
+                      ) : "-"}
+                    </td>
+                    <td className="text-right font-semibold text-green-600">Rs. {fmt(entry.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {entryModal && (
+        <AddModal
+          mode={entryModal}
+          initialVendor={currentVendor}
+          onClose={() => setEntryModal(null)}
+          onSaved={() => {
+            setEntryModal(null);
+            refreshFinanceViews();
+          }}
+        />
+      )}
+
+      {false && <>
       {/* Ledger Transactions */}
       <div className="card">
         <div className="card-header">
@@ -300,11 +487,11 @@ export default function PurchaseRecordDetailPage() {
         <div className="table-wrapper">
           <table className="table">
             <thead>
-              <tr><th>Date</th><th>Ref / Voucher</th><th>Booking</th><th>Description</th><th className="text-right">Debit (DR)</th><th className="text-right">Credit (CR)</th><th className="text-right">Balance</th></tr>
+              <tr><th>Date</th><th>Ref / Voucher</th><th>Booking</th><th>Description</th><th className="text-right">Debit (DR)</th><th className="text-right">Credit (CR)</th><th>Attachment</th><th className="text-right">Balance</th></tr>
             </thead>
             <tbody>
               <tr className="bg-slate-50">
-                <td colSpan={6} className="font-semibold text-slate-500 text-xs">Opening Balance</td>
+                <td colSpan={7} className="font-semibold text-slate-500 text-xs">Opening Balance</td>
                 <td className="text-right font-bold text-sm">Rs. {fmt(record.openingBalance)} DR</td>
               </tr>
               {sortedTxns.map((t, i) => {
@@ -320,6 +507,14 @@ export default function PurchaseRecordDetailPage() {
                     <td className="text-sm text-slate-700">{t.description || "—"}</td>
                     <td className="text-right font-medium text-red-600 text-sm">{dr > 0 ? `Rs. ${fmt(dr)}` : "—"}</td>
                     <td className="text-right font-medium text-green-600 text-sm">{cr > 0 ? `Rs. ${fmt(cr)}` : "—"}</td>
+                    <td>
+                      {t.attachment?.url ? (
+                        <a href={resolveUploadUrl(t.attachment.url)} target="_blank" rel="noreferrer" className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1">
+                          <i className={`fa ${/^application\/pdf/.test(t.attachment.mimeType) ? "fa-file-pdf text-red-500" : "fa-file-image text-blue-600"}`} />
+                          {t.attachment.fileName || "View"}
+                        </a>
+                      ) : "â€”"}
+                    </td>
                     <td className="text-right">
                       <span className={`font-bold text-sm ${isDR ? "text-red-600" : "text-green-600"}`}>
                         Rs. {fmt(Math.abs(runBal))} <span className="text-xs">{isDR ? "DR" : "CR"}</span>
@@ -332,6 +527,8 @@ export default function PurchaseRecordDetailPage() {
           </table>
         </div>
       </div>
+
+      </>}
 
       {/* Add Transaction Modal */}
       {addModal && (
@@ -346,8 +543,8 @@ export default function PurchaseRecordDetailPage() {
                 <div>
                   <p className="label mb-2">Entry Type *</p>
                   <div className="flex gap-3">
-                    {[["cr","Credit (CR)"],["dr","Debit (DR)"]].map(([val, lbl]) => (
-                      <button key={val} type="button" onClick={() => { setT("type", val); if (val === "cr") setT("bank", ""); }}
+                    {[["cr","Purchase Entry (CR)"],["dr","Payment Entry (DR)"]].map(([val, lbl]) => (
+                      <button key={val} type="button" onClick={() => { setTxn((t) => ({ ...t, type: val, bank: val === "cr" ? "" : t.bank, attachment: null })); }}
                         className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${txn.type === val ? (val === "cr" ? "border-green-500 bg-green-50 text-green-700" : "border-red-500 bg-red-50 text-red-700") : "border-slate-200 text-slate-500"}`}>
                         {lbl}
                       </button>
@@ -368,6 +565,13 @@ export default function PurchaseRecordDetailPage() {
                   <Field label="Client Name"><input className="input" value={txn.clientName} onChange={(e) => setT("clientName", e.target.value)} /></Field>
                   <Field label="Amount (Rs.) *"><input className="input" type="number" min="0.01" step="0.01" value={txn.amount} onChange={(e) => setT("amount", e.target.value)} required /></Field>
                   <Field label="Description" className="col-span-2"><textarea className="input min-h-[90px]" value={txn.description} onChange={(e) => setT("description", e.target.value)} /></Field>
+                  <Field label={txn.type === "cr" ? "Purchase Invoice" : "Payment Slip"} className="sm:col-span-2">
+                    <AttachmentField
+                      label={txn.type === "cr" ? "Purchase Invoice" : "Payment Slip"}
+                      attachment={txn.attachment}
+                      onChange={(attachment) => setT("attachment", attachment)}
+                    />
+                  </Field>
                   {txn.type === "dr" && (
                     <Field label="Bank Account *" className="sm:col-span-2 min-w-0">
                     <select className="input min-w-0 max-w-full truncate" value={txn.bank} onChange={(e) => setT("bank", e.target.value)} required>

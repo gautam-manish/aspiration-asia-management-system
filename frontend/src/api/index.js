@@ -215,6 +215,13 @@ export const purchaseRecordAPI = {
   update:          (id, data) => api.put(`/purchaserecords/${id}`, data),
   remove:          (id)       => api.delete(`/purchaserecords/${id}`),
   addTransaction:  (id, data) => api.post(`/purchaserecords/${id}/transaction`, data),
+  uploadAttachment: (file)    => {
+    const fd = new FormData();
+    fd.append("slip", file, file.name);
+    return api.post("/purchaserecords/upload-attachment", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
 };
 
 // ── Bank Accounts ───────────────────────────────────────────────

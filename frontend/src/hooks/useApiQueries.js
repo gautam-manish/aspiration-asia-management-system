@@ -381,10 +381,10 @@ export function useSundry(params = {}) {
   });
 }
 
-export function useSundryPaginated({ search = "", page = 1, limit = 50 } = {}) {
+export function useSundryPaginated({ search = "", page = 1, limit = 50, role = "", type = "", status = "" } = {}) {
   return useQuery({
-    queryKey: ["sundry", "paginated", { search, page, limit }],
-    queryFn: () => sundryAPI.getAll({ search, page, limit }).then((r) => ({
+    queryKey: ["sundry", "paginated", { search, page, limit, role, type, status }],
+    queryFn: () => sundryAPI.getAll({ search, page, limit, role, type, status }).then((r) => ({
       entries:    r.data?.data       ?? [],
       total:      r.data?.total      ?? 0,
       page:       r.data?.page       ?? page,
@@ -546,6 +546,9 @@ export function usePurchaseRecordMutations() {
     qc.invalidateQueries({ queryKey: ["customer-payments"] });
     qc.invalidateQueries({ queryKey: ["customer-payment"] });
     qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+    qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+    qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
     qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
     qc.invalidateQueries({ queryKey: ["journal-entries"] });
     qc.invalidateQueries({ queryKey: ["bank-accounts"] });
@@ -580,6 +583,9 @@ export function usePurchaseRecordMutations() {
         qc.invalidateQueries({ queryKey: ["customer-payments"] });
         qc.invalidateQueries({ queryKey: ["customer-payment"] });
         qc.invalidateQueries({ queryKey: ["reports", "customer-ledger"] });
+        qc.invalidateQueries({ queryKey: ["reports", "vendor-ledger"] });
+        qc.invalidateQueries({ queryKey: ["reports", "booking-profitability"] });
+        qc.invalidateQueries({ queryKey: ["reports", "profit-loss"] });
         qc.invalidateQueries({ queryKey: ["reports", "accounting-reconciliation"] });
         qc.invalidateQueries({ queryKey: ["journal-entries"] });
         qc.invalidateQueries({ queryKey: ["bank-accounts"] });

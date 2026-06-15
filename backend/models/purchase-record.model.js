@@ -1,5 +1,26 @@
 import mongoose from "mongoose";
 
+const attachmentSchema = new mongoose.Schema(
+  {
+    url:      { type: String, trim: true, default: "" },
+    fileName: { type: String, trim: true, default: "" },
+    mimeType: { type: String, trim: true, default: "" },
+    size:     { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
+const purchaseLineSchema = new mongoose.Schema(
+  {
+    serviceType: { type: String, trim: true, default: "other" },
+    description: { type: String, trim: true, default: "" },
+    qty: { type: Number, default: 0, min: 0 },
+    rate: { type: Number, default: 0, min: 0 },
+    amount: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false }
+);
+
 // ─────────────────────────────────────────
 //  Transaction Sub-Schema
 //  One entry per DR/CR row in the ledger
@@ -51,6 +72,19 @@ const transactionSchema = new mongoose.Schema(
       type:    Boolean,
       default: false,   // true only for the auto-generated opening balance entry
     },
+    attachment: {
+      type:    attachmentSchema,
+      default: () => ({}),
+    },
+    lineItems: {
+      type:    [purchaseLineSchema],
+      default: [],
+    },
+    taxAmount: {
+      type:    Number,
+      default: 0,
+      min:     0,
+    },
   },
   { _id: true, timestamps: true }
 );
@@ -94,6 +128,11 @@ const purchaseRecordSchema = new mongoose.Schema(
       trim:      true,
       lowercase: true,
       default:   "",
+    },
+    vendorId: {
+      type:    mongoose.Schema.Types.ObjectId,
+      ref:     "Sundry",
+      default: null,
     },
 
     // ── Balances ──────────────────────────────────────────────────────────
@@ -152,5 +191,6 @@ const PurchaseRecord = mongoose.model("PurchaseRecord", purchaseRecordSchema);
 // debtorName is already unique-indexed via the field declaration.
 purchaseRecordSchema.index({ createdAt: -1 });
 purchaseRecordSchema.index({ "transactions.bookingId": 1 });
+purchaseRecordSchema.index({ vendorId: 1 });
 
 export default PurchaseRecord;

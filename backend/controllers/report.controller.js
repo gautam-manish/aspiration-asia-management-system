@@ -5,6 +5,7 @@ import VendorPayment from "../models/vendor-payment.model.js";
 import Booking from "../models/booking.model.js";
 import OfficeExpense from "../models/office-expense.model.js";
 import PurchaseRecord from "../models/purchase-record.model.js";
+import Sundry from "../models/sundry.model.js";
 import { buildAccountingReconciliation } from "../services/accounting-reconciliation.service.js";
 
 const toDateOnly = (value) => {
@@ -563,10 +564,16 @@ export const getVendorLedger = async (req, res) => {
     const { vendorId = "", search = "", from = "", to = "" } = req.query;
     const billFilter = { status: { $ne: "void" } };
     const paymentFilter = { status: "posted" };
+    const purchaseRecordFilter = {};
 
     if (vendorId) {
       billFilter.vendorId = vendorId;
       paymentFilter.vendorId = vendorId;
+      const vendor = await Sundry.findById(vendorId).select("contactPerson companyName").lean();
+      purchaseRecordFilter.$or = [
+        { vendorId },
+        ...(vendor?.contactPerson ? [{ debtorName: { $regex: `^${vendor.contactPerson.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}$`, $options: "i" } }] : []),
+      ];
     }
     if (from || to) {
       billFilter.billDate = {};
@@ -581,12 +588,15 @@ export const getVendorLedger = async (req, res) => {
       }
     }
 
-    const [bills, payments] = await Promise.all([
+    const [bills, payments, purchaseRecords] = await Promise.all([
       VendorBill.find(billFilter)
         .select("billNumber vendorInvoiceNumber billDate bookingId vendorId vendor total currency")
         .lean(),
       VendorPayment.find(paymentFilter)
         .select("paymentNumber paymentDate billNumber bookingId vendorId vendor amount method referenceCode")
+        .lean(),
+      PurchaseRecord.find(purchaseRecordFilter)
+        .select("vendorId debtorName debtorEmail transactions")
         .lean(),
     ]);
 
@@ -623,6 +633,24 @@ export const getVendorLedger = async (req, res) => {
         credit: 0,
         currency: "Rs.",
       })),
+      ...purchaseRecords.flatMap((record) => (record.transactions || [])
+        .filter((txn) => (!from || txn.date >= from) && (!to || txn.date <= to))
+        .map((txn) => ({
+          sourceId: txn._id,
+          sourcePath: `/purchase-records/${record._id}`,
+          date: toDateOnly(txn.date),
+          partyId: record.vendorId ? String(record.vendorId) : "",
+          partyName: record.debtorName || "Unassigned",
+          partyEmail: record.debtorEmail || "",
+          reference: txn.refNo || "",
+          secondaryReference: txn.attachment?.url ? txn.attachment.fileName || "Attachment" : "",
+          bookingId: txn.bookingId || "",
+          type: txn.type === "dr" ? "purchase-payment" : "purchase-entry",
+          description: txn.description || (txn.type === "dr" ? "Vendor payment entry" : "Vendor purchase entry"),
+          debit: txn.type === "dr" ? roundMoney(txn.amount) : 0,
+          credit: txn.type === "cr" ? roundMoney(txn.amount) : 0,
+          currency: "Rs.",
+        }))),
     ];
 
     if (search) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Empty, PageLoader, SearchBar } from "../../components/common";
 import { useSundryDropdown, useVendorLedger } from "../../hooks/useApiQueries";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
@@ -13,7 +13,8 @@ function SummaryCard({ label, value, tone = "text-slate-800" }) {
 }
 
 export default function VendorLedgerPage() {
-  const [vendorId, setVendorId] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [vendorId, setVendorId] = useState(searchParams.get("vendorId") || "");
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -22,6 +23,18 @@ export default function VendorLedgerPage() {
   const { data, isLoading, isFetching, error, refetch } = useVendorLedger({ vendorId, search: debouncedSearch, from, to });
 
   useEffect(() => { if (error) notifyError(error); }, [error]);
+  useEffect(() => {
+    const nextVendorId = searchParams.get("vendorId") || "";
+    setVendorId(nextVendorId);
+  }, [searchParams]);
+
+  const changeVendor = (nextVendorId) => {
+    setVendorId(nextVendorId);
+    const next = new URLSearchParams(searchParams);
+    if (nextVendorId) next.set("vendorId", nextVendorId);
+    else next.delete("vendorId");
+    setSearchParams(next, { replace: true });
+  };
 
   const entries = data?.entries ?? [];
   const totals = data?.totals ?? {};
@@ -66,13 +79,13 @@ export default function VendorLedgerPage() {
       <div className="card">
         <div className="card-header flex-wrap gap-3">
           <SearchBar value={search} onChange={setSearch} placeholder="Search vendor, bill, booking..." />
-          <select className="input w-56" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+          <select className="input w-56" value={vendorId} onChange={(e) => changeVendor(e.target.value)}>
             <option value="">All vendors</option>
             {vendors.map((v) => <option key={v._id} value={v._id}>{v.contactPerson}{v.companyName ? ` (${v.companyName})` : ""}</option>)}
           </select>
           <input className="input w-40" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           <input className="input w-40" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          {(from || to || vendorId) && <button onClick={() => { setFrom(""); setTo(""); setVendorId(""); }} className="btn-ghost text-xs"><i className="fa fa-times" /> Clear</button>}
+          {(from || to || vendorId) && <button onClick={() => { setFrom(""); setTo(""); changeVendor(""); }} className="btn-ghost text-xs"><i className="fa fa-times" /> Clear</button>}
           <span className="text-sm text-slate-500 ml-auto">{entries.length} entr{entries.length === 1 ? "y" : "ies"}</span>
         </div>
 

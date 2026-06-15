@@ -5,10 +5,10 @@ import BankAccount from "../models/bank-account.model.js";
 import CustomerPayment from "../models/customer-payment.model.js";
 import VendorPayment from "../models/vendor-payment.model.js";
 import OfficeExpense from "../models/office-expense.model.js";
+import Sundry from "../models/sundry.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
 import { resolveBookingId } from "../utils/bookingRef.js";
 import {
-  syncPurchaseRecordCredit,
   voidPurchaseRecordCustomerPayments,
 } from "../services/legacy-finance-integration.service.js";
 
@@ -23,6 +23,29 @@ const fmt = (n = 0) =>
 
 const calcClosing = (opening = 0, dr = 0, cr = 0) =>
   Number(opening || 0) + Number(dr || 0) - Number(cr || 0);
+
+function cleanAttachment(attachment = {}) {
+  return attachment && attachment.url
+    ? {
+        url: String(attachment.url || "").trim(),
+        fileName: String(attachment.fileName || "").trim(),
+        mimeType: String(attachment.mimeType || "").trim(),
+        size: Number(attachment.size) || 0,
+      }
+    : { url: "", fileName: "", mimeType: "", size: 0 };
+}
+
+function cleanLineItems(lineItems = []) {
+  return Array.isArray(lineItems)
+    ? lineItems.map((line) => ({
+        serviceType: String(line.serviceType || "other").trim(),
+        description: String(line.description || "").trim(),
+        qty: Number(line.qty) || 0,
+        rate: Number(line.rate) || 0,
+        amount: Number(line.amount) || 0,
+      })).filter((line) => line.description || line.amount > 0)
+    : [];
+}
 
 async function getBankAvailableBalance(bankName) {
   const cleanName = String(bankName || "").trim();
@@ -220,6 +243,7 @@ export const getPurchaseRecordById = async (req, res) => {
 export const createOrAddToPurchaseRecord = async (req, res) => {
   try {
     const {
+      vendorId = "",
       debtorName,
       debtorCompany = "",
       debtorPan = "",
@@ -230,6 +254,7 @@ export const createOrAddToPurchaseRecord = async (req, res) => {
       fiscalYear = "",
       transaction,
     } = req.body;
+    const cleanVendorId = String(vendorId || "").trim() || null;
 
     // ── Validation ──────────────────────────
     if (!debtorName?.trim()) {
@@ -276,9 +301,23 @@ export const createOrAddToPurchaseRecord = async (req, res) => {
     }
 
     // ── Find Existing ───────────────────────
-    let record = await PurchaseRecord.findOne({
-      debtorName: debtorName.trim(),
-    });
+    let record = cleanVendorId
+      ? await PurchaseRecord.findOne({ vendorId: cleanVendorId })
+      : null;
+    if (!record) {
+      record = await PurchaseRecord.findOne({
+        debtorName: debtorName.trim(),
+      });
+    }
+    if (cleanVendorId) {
+      const vendor = await Sundry.findById(cleanVendorId).lean();
+      if (!vendor || !((vendor.roles || []).includes("vendor") || vendor.type === "creditor")) {
+        return res.status(400).json({
+          success: false,
+          message: "Selected vendor was not found.",
+        });
+      }
+    }
 
     // ────────────────────────────────────────
     // CREATE NEW RECORD
@@ -291,10 +330,13 @@ export const createOrAddToPurchaseRecord = async (req, res) => {
         debtorAddress,
         debtorPhone,
         debtorEmail,
+        vendorId: cleanVendorId,
         openingBalance: Number(openingBalance || 0),
         fiscalYear,
         transactions: [],
       });
+    } else if (cleanVendorId && !record.vendorId) {
+      record.vendorId = cleanVendorId;
     }
 
     // ── Add Transaction ─────────────────────
@@ -308,11 +350,12 @@ export const createOrAddToPurchaseRecord = async (req, res) => {
       bank: transaction.bank || "",
       type: transaction.type || "cr",
       isOpening: false,
+      attachment: cleanAttachment(transaction.attachment),
+      lineItems: cleanLineItems(transaction.lineItems),
+      taxAmount: Number(transaction.taxAmount) || 0,
     });
 
     await record.save();
-    const added = record.transactions?.[record.transactions.length - 1];
-    if (added) await syncPurchaseRecordCredit(record, added, req.user);
 
     return res.status(201).json({
       success: true,
@@ -400,11 +443,12 @@ export const addTransaction = async (req, res) => {
       bank: transaction.bank || "",
       type: transaction.type || "cr",
       isOpening: false,
+      attachment: cleanAttachment(transaction.attachment),
+      lineItems: cleanLineItems(transaction.lineItems),
+      taxAmount: Number(transaction.taxAmount) || 0,
     });
 
     await record.save();
-    const added = record.transactions?.[record.transactions.length - 1];
-    if (added) await syncPurchaseRecordCredit(record, added, req.user);
 
     return res.status(200).json({
       success: true,
@@ -521,4 +565,27 @@ export const generateLedgerPdf = async (req, res) => {
     success: false,
     message: "Use Generate PDF Report on the detail page (browser export).",
   });
+};
+
+export const uploadPurchaseRecordAttachment = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded.", data: null });
+    }
+
+    const url = `/uploads/purchase-record-attachments/${req.file.filename}`;
+    return res.status(201).json({
+      success: true,
+      message: "Purchase record attachment uploaded successfully",
+      data: {
+        url,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+      },
+    });
+  } catch (error) {
+    console.error("uploadPurchaseRecordAttachment error:", error);
+    return res.status(500).json({ success: false, message: "Failed to upload attachment.", data: null });
+  }
 };

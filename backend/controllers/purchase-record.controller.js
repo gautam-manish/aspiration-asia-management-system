@@ -38,6 +38,7 @@ function cleanAttachment(attachment = {}) {
 function cleanLineItems(lineItems = []) {
   return Array.isArray(lineItems)
     ? lineItems.map((line) => ({
+        date: String(line.date || "").trim(),
         serviceType: String(line.serviceType || "other").trim(),
         description: String(line.description || "").trim(),
         qty: Number(line.qty) || 0,
@@ -119,6 +120,11 @@ async function validatePurchaseTransactionBank(transaction) {
 }
 
 async function validatePurchaseTransactionBooking(transaction) {
+  if (transaction.type === "dr") {
+    transaction.bookingId = "";
+    transaction.clientName = "";
+    return {};
+  }
   const bookingRef = await resolveBookingId(transaction.bookingId);
   if (bookingRef.error) return bookingRef;
   transaction.bookingId = bookingRef.bookingId;

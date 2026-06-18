@@ -16,7 +16,11 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       refetchOnMount: false,
       refetchOnReconnect: true,
-      retry: 1,
+      retry: (failureCount, error) => {
+        // Never retry auth failures — the token is already cleared.
+        if (error?.response?.status === 401) return false;
+        return failureCount < 1;
+      },
     },
     mutations: {
       retry: 0,

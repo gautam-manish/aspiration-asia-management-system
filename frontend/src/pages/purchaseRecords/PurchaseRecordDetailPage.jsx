@@ -312,14 +312,14 @@ export default function PurchaseRecordDetailPage() {
   const bookingOptions = Array.from(
     new Map(
       sortedTxns
-        .filter((entry) => entry.bookingId)
+        .filter((entry) => entry.type === "cr" && entry.bookingId)
         .map((entry) => [entry.bookingId, {
           bookingId: entry.bookingId,
           clientName: entry.clientName || "",
         }])
     ).values()
   );
-  const latestBookingEntry = [...sortedTxns].reverse().find((entry) => entry.bookingId);
+  const latestBookingEntry = [...purchaseEntries].reverse().find((entry) => entry.bookingId);
   const currentVendor = {
     _id: record.vendorId || "",
     contactPerson: record.debtorName || "",
@@ -436,6 +436,7 @@ export default function PurchaseRecordDetailPage() {
                           <div className="space-y-1">
                             {(entry.lineItems || []).map((line, lineIdx) => (
                               <div key={lineIdx} className="text-xs">
+                                {line.date && <span className="font-mono text-slate-400 mr-2">{line.date}</span>}
                                 <span className="font-medium text-slate-700">{line.description || line.serviceType || "Line item"}</span>
                                 <span className="text-slate-400"> - {line.qty || 0} x Rs. {fmt(line.rate)} = Rs. {fmt(line.amount)}</span>
                               </div>
@@ -531,14 +532,13 @@ export default function PurchaseRecordDetailPage() {
           <div className="table-wrapper">
             <table className="table">
               <thead>
-                <tr><th>Date</th><th>Reference</th><th>Booking</th><th>Description</th><th>Bank</th><th>Slip</th><th className="text-right">Amount</th></tr>
+                <tr><th>Date</th><th>Reference</th><th>Description</th><th>Bank</th><th>Slip</th><th className="text-right">Amount</th></tr>
               </thead>
               <tbody>
                 {paymentEntries.map((entry, idx) => (
                   <tr key={entry._id || idx}>
                     <td className="text-sm text-slate-600">{entry.date || "-"}</td>
                     <td className="font-mono text-xs text-slate-500">{entry.refNo || "-"}</td>
-                    <td className="font-mono text-xs text-brand-600">{entry.bookingId || "-"}</td>
                     <td className="text-sm text-slate-700">{entry.description || "-"}</td>
                     <td className="text-sm text-slate-500">{entry.bank || "-"}</td>
                     <td>

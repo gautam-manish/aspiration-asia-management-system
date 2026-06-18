@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { notifyError } from "../../utils/helpers";
 import { Spinner } from "../../components/common";
+import { resetRedirectFlag } from "../../api/axios";
 import toast from "react-hot-toast";
 
 export default function LoginPage() {
@@ -12,6 +13,13 @@ export default function LoginPage() {
   const [showPw, setShowPw]   = useState(false);
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false);
+
+  // Clear any leftover error toasts from 401-redirected pages
+  // and reset the axios redirect guard so fresh logins work.
+  useEffect(() => {
+    toast.dismiss();
+    resetRedirectFlag();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

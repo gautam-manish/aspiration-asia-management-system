@@ -46,15 +46,16 @@ api.interceptors.response.use(
       if (!isRedirecting) {
         isRedirecting = true;
         localStorage.removeItem("token");
-        // Use SPA navigation when possible, fall back to full reload only
-        // when we're not already on /login (prevents the "needs reload twice" bug).
-        if (!window.location.pathname.startsWith("/login")) {
-          window.location.replace("/login");
-        }
+        localStorage.removeItem("user");
+        // Don't hard-redirect here — AuthContext.verify() clears session state,
+        // which triggers ProtectedRoute to SPA-navigate to /login cleanly.
       }
     }
     return Promise.reject(err);
   }
 );
+
+/** Call when the login page mounts so the redirect guard doesn't stay stuck. */
+export const resetRedirectFlag = () => { isRedirecting = false; };
 
 export default api;

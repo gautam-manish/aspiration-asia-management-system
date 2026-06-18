@@ -11,7 +11,7 @@ import toast from "react-hot-toast";
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 const ATTACHMENT_ACCEPT = ".pdf,.jpg,.jpeg,application/pdf,image/jpeg";
 const today = () => new Date().toISOString().slice(0, 10);
-const EMPTY_LINE = { serviceType: "hotel", description: "", qty: 1, rate: "", amount: "" };
+const EMPTY_LINE = { date: "", serviceType: "hotel", description: "", qty: 1, rate: "", amount: "" };
 
 const fmtSize = (bytes = 0) => {
   const n = Number(bytes) || 0;
@@ -70,7 +70,7 @@ export function AddModal({ mode = "purchase", initialVendor = null, initialTrans
   const initialVendorLabel = initialVendor
     ? initialVendor.contactPerson + (initialVendor.companyName ? ` (${initialVendor.companyName})` : "")
     : "";
-  const defaultBooking = initialTransaction || (bookingOptions.length === 1 ? bookingOptions[0] : null);
+  const defaultBooking = !isPayment ? (initialTransaction || (bookingOptions.length === 1 ? bookingOptions[0] : null)) : null;
   // Cached sundry list — fetched once and reused on every modal open.
   const qc = useQueryClient();
   const { data: vendors = [], refetch: refetchVendors } = useSundryDropdown({ role: "vendor" });
@@ -187,7 +187,7 @@ export function AddModal({ mode = "purchase", initialVendor = null, initialTrans
     if (submittingRef.current) return;
     if (!selected) { toast.error("Select a creditor/vendor from the dropdown"); return; }
     const debtorNameClean = selected.contactPerson;
-    if (!txn.bookingId.trim()) { toast.error("Booking ID required"); return; }
+    if (!isPayment && !txn.bookingId.trim()) { toast.error("Booking ID required"); return; }
     if (!txn.date)   { toast.error("Transaction date required"); return; }
     if (!isPayment && !lines.some((line) => String(line.description || "").trim() && Number(line.amount) >= 0)) {
       toast.error("At least one purchase line is required");
@@ -216,6 +216,8 @@ export function AddModal({ mode = "purchase", initialVendor = null, initialTrans
         ...(existing ? {} : { openingBalance: Number(selected.openingBalance) || 0 }),
         transaction:   {
           ...txn,
+          bookingId: isPayment ? "" : txn.bookingId,
+          clientName: isPayment ? "" : txn.clientName,
           bank: isPayment ? txn.bank : "",
           type: isPayment ? "dr" : "cr",
           amount,
@@ -368,7 +370,10 @@ export function AddModal({ mode = "purchase", initialVendor = null, initialTrans
                   </div>
                   <div className="space-y-2">
                     {lines.map((line, idx) => (
-                      <div key={idx} className="grid grid-cols-1 md:grid-cols-[130px_minmax(220px,1fr)_90px_130px_140px_42px] gap-2 items-end rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div key={idx} className="grid grid-cols-1 md:grid-cols-[130px_130px_minmax(220px,1fr)_90px_130px_140px_42px] gap-2 items-end rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <Field label="Date">
+                          <input className="input" type="date" value={line.date} onChange={(e) => updateLine(idx, "date", e.target.value)} />
+                        </Field>
                         <Field label="Service">
                           <select className="input" value={line.serviceType} onChange={(e) => updateLine(idx, "serviceType", e.target.value)}>
                             {["hotel", "transport", "guide", "activity", "flight", "visa", "meal", "other"].map((t) => <option key={t} value={t}>{t}</option>)}
@@ -428,28 +433,6 @@ export function AddModal({ mode = "purchase", initialVendor = null, initialTrans
                 </Field>
                 <Field label="Ref / Voucher No.">
                   <input className="input" value={txn.refNo} onChange={(e) => setT("refNo", e.target.value)} />
-                </Field>
-                <Field label="Booking ID *">
-                  {bookingOptions.length > 0 ? (
-                    <select className="input" value={txn.bookingId} onChange={(e) => applyBookingOption(e.target.value)} required>
-                      <option value="">Select booking</option>
-                      {bookingOptions.map((option) => (
-                        <option key={option.bookingId} value={option.bookingId}>
-                          {option.bookingId}{option.clientName ? ` - ${option.clientName}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="flex gap-2">
-                      <input className="input flex-1" value={txn.bookingId} onChange={(e) => setT("bookingId", e.target.value)} placeholder="ASA..." required />
-                      <button type="button" onClick={fetchBooking} disabled={bookingLookup || !txn.bookingId.trim()} className="btn-secondary text-xs whitespace-nowrap">
-                        {bookingLookup ? "Fetching…" : <><i className="fa fa-search" /> Fetch</>}
-                      </button>
-                    </div>
-                  )}
-                </Field>
-                <Field label="Client Name">
-                  <input className="input" value={txn.clientName} onChange={(e) => setT("clientName", e.target.value)} />
                 </Field>
                 <Field label="Amount (Rs.) *">
                   <input className="input" type="number" min="0.01" step="0.01" value={txn.amount} onChange={(e) => setT("amount", e.target.value)} required />

@@ -149,6 +149,13 @@ app.use("/api/office-expenses", authMiddleware, allowFinance, auditAction("write
 app.use("/api/journal-entries", authMiddleware, allowFinance, journalEntryRoutes);
 app.use("/api/reports",         authMiddleware, allowFinance, reportRoutes);
 app.use("/api/audit-logs",      authMiddleware, allowFinance, auditLogRoutes);
+// Serve React build
+app.use('/intmgt', express.static(path.join(__dirname, '../frontend/dist')));
+
+// Catch-all — let React Router handle all /intmgt/* routes
+app.get('/intmgt/*', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+});
 
 // ── Centralized Error Handler ────────────────────────────────────────────────
 // MUST be after all routes. Catches unhandled errors, multer errors, bad JSON,

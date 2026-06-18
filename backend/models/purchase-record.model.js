@@ -12,6 +12,7 @@ const attachmentSchema = new mongoose.Schema(
 
 const purchaseLineSchema = new mongoose.Schema(
   {
+    date: { type: String, trim: true, default: "" },
     serviceType: { type: String, trim: true, default: "other" },
     description: { type: String, trim: true, default: "" },
     qty: { type: Number, default: 0, min: 0 },

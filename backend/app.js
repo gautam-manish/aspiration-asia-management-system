@@ -153,7 +153,7 @@ app.use("/api/audit-logs",      authMiddleware, allowFinance, auditLogRoutes);
 app.use('/intmgt', express.static(path.join(__dirname, '../frontend/dist')));
 
 // Catch-all — let React Router handle all /intmgt/* routes
-app.get('/intmgt/*', (_req, res) => {
+app.get('/intmgt/*splat', (_req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 

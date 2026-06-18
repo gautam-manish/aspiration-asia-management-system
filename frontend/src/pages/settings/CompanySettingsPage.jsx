@@ -14,7 +14,6 @@ const EMPTY_FORM = {
   email: "",
   panNumber: "",
   registrationNumber: "",
-  logoUrl: "",
   invoiceAccountName: "",
 };
 
@@ -51,7 +50,16 @@ export default function CompanySettingsPage() {
 
     setSaving(true);
     try {
-      const { data: res } = await companySettingsAPI.update(form);
+      const payload = {
+        companyName: form.companyName,
+        addressLine: form.addressLine,
+        phone: form.phone,
+        email: form.email,
+        panNumber: form.panNumber,
+        registrationNumber: form.registrationNumber,
+        invoiceAccountName: form.invoiceAccountName,
+      };
+      const { data: res } = await companySettingsAPI.update(payload);
       qc.setQueryData(["company-settings"], res?.data);
       qc.invalidateQueries({ queryKey: ["company-settings"] });
       toast.success("Company settings updated");
@@ -101,32 +109,6 @@ export default function CompanySettingsPage() {
             <Field label="Registration Number" required>
               <input className="input" value={form.registrationNumber} onChange={(e) => set("registrationNumber", e.target.value)} required disabled={!isAdmin} />
             </Field>
-            <Field label="Logo URL" className="md:col-span-2">
-              <input className="input" value={form.logoUrl} onChange={(e) => set("logoUrl", e.target.value)} placeholder="https://..." disabled={!isAdmin} />
-            </Field>
-          </div>
-
-          <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Invoice Header Preview</p>
-            <div className="flex items-start gap-3">
-              {form.logoUrl && (
-                <img
-                  src={form.logoUrl}
-                  className="w-16 h-16 object-contain bg-white border border-slate-200 rounded"
-                  alt="Company logo"
-                  onError={(e) => (e.currentTarget.style.display = "none")}
-                />
-              )}
-              <div>
-                <p className="font-bold text-slate-800">{form.companyName || "-"}</p>
-                <p className="text-sm text-slate-500">{form.addressLine || "-"}</p>
-                <p className="text-sm text-slate-500">
-                  {form.phone || "-"} <span className="text-slate-800">|</span> <span className="text-brand-600">{form.email || "-"}</span>
-                </p>
-                <p className="text-sm text-slate-500"><span className="font-bold text-slate-800">PAN:</span> {form.panNumber || "-"}</p>
-                <p className="text-sm text-slate-500"><span className="font-bold text-slate-800">Registration No:</span> {form.registrationNumber || "-"}</p>
-              </div>
-            </div>
           </div>
         </div>
 

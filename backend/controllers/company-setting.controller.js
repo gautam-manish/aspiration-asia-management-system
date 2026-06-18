@@ -7,7 +7,6 @@ const pickSettings = (body = {}) => ({
   email: String(body.email || "").trim().toLowerCase(),
   panNumber: String(body.panNumber || "").trim(),
   registrationNumber: String(body.registrationNumber || "").trim(),
-  logoUrl: String(body.logoUrl || "").trim(),
   invoiceAccountName: String(body.invoiceAccountName || "").trim(),
 });
 
@@ -32,7 +31,9 @@ export const getCompanySettings = async (_req, res) => {
 
 export const updateCompanySettings = async (req, res) => {
   try {
+    const existing = await CompanySetting.findOne({ key: "default" }).lean();
     const data = pickSettings(req.body);
+    const preserved = normaliseSettings(existing);
     const errors = [];
 
     if (!data.companyName) errors.push("Company name is required");
@@ -42,7 +43,6 @@ export const updateCompanySettings = async (req, res) => {
     if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) errors.push("Email is not valid");
     if (!data.panNumber) errors.push("PAN number is required");
     if (!data.registrationNumber) errors.push("Registration number is required");
-    if (data.logoUrl && !/^(https?:\/\/|\/)/i.test(data.logoUrl)) errors.push("Logo URL must be a valid URL or site path");
     if (!data.invoiceAccountName) errors.push("Invoice account name is required");
 
     if (errors.length) {
@@ -51,7 +51,7 @@ export const updateCompanySettings = async (req, res) => {
 
     const settings = await CompanySetting.findOneAndUpdate(
       { key: "default" },
-      { $set: { ...data, key: "default" } },
+      { $set: { ...data, logoUrl: preserved.logoUrl, key: "default" } },
       { new: true, upsert: true, runValidators: true },
     );
 

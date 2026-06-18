@@ -191,27 +191,27 @@ export default function Layout({ children }) {
               <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0">
                 <i className="fa fa-user text-white text-xs" />
               </div>
-              <div className="overflow-hidden">
+              <div className="overflow-hidden flex-1">
                 <p className="text-xs font-medium text-slate-700 truncate">{user?.username || "Admin"}</p>
                 <p className="text-[10px] text-slate-400">Administrator</p>
               </div>
+              {userRole === "admin" && (
+                <NavLink
+                  to="/settings/company"
+                  className={({ isActive }) =>
+                    `w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                      isActive
+                        ? "bg-brand-50 text-brand-700"
+                        : "text-slate-400 hover:bg-white hover:text-slate-700"
+                    }`
+                  }
+                  title="Company Settings"
+                  aria-label="Company Settings"
+                >
+                  <i className="fa fa-cog text-xs" />
+                </NavLink>
+              )}
             </div>
-          )}
-          {userRole === "admin" && (
-            <NavLink
-              to="/settings/company"
-              className={({ isActive }) =>
-                `flex items-center gap-3 w-full px-2 py-2 rounded-lg text-sm transition-colors ${
-                  isActive
-                    ? "bg-brand-50 text-brand-700"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
-                }`
-              }
-              title={collapsed ? "Company Settings" : undefined}
-            >
-              <i className="fa fa-cog w-4 text-center flex-shrink-0" />
-              {!collapsed && <span>Settings</span>}
-            </NavLink>
           )}
           <button
             onClick={askLogout}

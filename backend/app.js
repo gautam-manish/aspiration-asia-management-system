@@ -33,6 +33,7 @@ import officeExpenseRoutes  from "./routes/office-expense.routes.js";
 import journalEntryRoutes   from "./routes/journal-entry.routes.js";
 import reportRoutes         from "./routes/report.routes.js";
 import auditLogRoutes       from "./routes/audit-log.routes.js";
+import companySettingRoutes from "./routes/company-setting.routes.js";
 import { auditAction }      from "./middleware/audit.middleware.js";
 import { allowAdmin, allowFinance, allowSalesFinance, allowSalesOps } from "./middleware/rbac.middleware.js";
 
@@ -149,6 +150,7 @@ app.use("/api/office-expenses", authMiddleware, allowFinance, auditAction("write
 app.use("/api/journal-entries", authMiddleware, allowFinance, journalEntryRoutes);
 app.use("/api/reports",         authMiddleware, allowFinance, reportRoutes);
 app.use("/api/audit-logs",      authMiddleware, allowFinance, auditLogRoutes);
+app.use("/api/company-settings", authMiddleware, companySettingRoutes);
 // Serve React build
 app.use('/intmgt', express.static(path.join(__dirname, '../frontend/dist')));
 

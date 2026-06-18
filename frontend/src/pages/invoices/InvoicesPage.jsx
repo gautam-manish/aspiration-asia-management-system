@@ -5,11 +5,26 @@ import { invoiceAPI, bookingAPI } from "../../api";
 import { todayString, notifyError } from "../../utils/helpers";
 import { PageLoader, Empty, SearchBar, ConfirmModal, Field, Pagination } from "../../components/common";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { useInvoicesPaginated, useInvoiceMutations } from "../../hooks/useApiQueries";
+import { useCompanySettings, useInvoicesPaginated, useInvoiceMutations } from "../../hooks/useApiQueries";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 
 const EMPTY_LINE = { description: "", details: "", qty: 1, rate: 0, amount: 0 };
+const DEFAULT_COMPANY_SETTINGS = {
+  companyName: "Aspiration AISA",
+  email: "account@aspirationasia.com",
+  addressLine: "Near Nyatapol Temple Bhaktapur, Nepal",
+  phone: "+977 9746239349",
+};
+
+const invoiceFromDefaults = (settings = {}) => ({
+  name: settings.companyName || DEFAULT_COMPANY_SETTINGS.companyName,
+  email: settings.email || DEFAULT_COMPANY_SETTINGS.email,
+  address1: settings.addressLine || DEFAULT_COMPANY_SETTINGS.addressLine,
+  address2: "",
+  zip: "",
+  phone: settings.phone || DEFAULT_COMPANY_SETTINGS.phone,
+});
 
 const addDays = (date, days) => {
   const d = new Date(`${date}T00:00:00`);
@@ -40,6 +55,7 @@ const normalizeInvoiceListStatus = (summary = {}, total = 0) => {
 
 export function InvoiceModal({ invoice, onClose, onSaved }) {
   const isEdit = !!invoice;
+  const { data: companySettings } = useCompanySettings();
 
   const buildInitial = () => {
     if (invoice) {
@@ -53,14 +69,10 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
         partyCompanyName: invoice.partyCompanyName || invoice.billTo?.name || "",
         partyContactPerson: invoice.partyContactPerson || invoice.billTo?.name || "",
         customerId:    invoice.customerId    || "",
-        from: {
-          name:     invoice.from?.name     || "Aspiration AISA",
-          email:    invoice.from?.email    || "account@aspirationasia.com",
-          address1: invoice.from?.address1 || "Near Nyatapol Temple",
-          address2: invoice.from?.address2 || "Bhaktapur, Nepal",
-          zip:      invoice.from?.zip      || "",
-          phone:    invoice.from?.phone    || "+977 9746239349",
-        },
+      from: {
+        ...invoiceFromDefaults(companySettings),
+        ...invoice.from,
+      },
         billTo: {
           name:    invoice.billTo?.name    || "",
           email:   invoice.billTo?.email   || "",
@@ -94,14 +106,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       partyCompanyName: "",
       partyContactPerson: "",
       customerId: "",
-      from: {
-        name: "Aspiration AISA",
-        email: "account@aspirationasia.com",
-        address1: "Near Nyatapol Temple",
-        address2: "Bhaktapur, Nepal",
-        zip: "",
-        phone: "+977 9746239349",
-      },
+      from: invoiceFromDefaults(companySettings),
       billTo: { name: "", email: "", address: "", mobile: "" },
       lineItems: [{ ...EMPTY_LINE }],
       subtotal: 0, discountType: "none", discountValue: 0, discount: 0,
@@ -123,6 +128,11 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       .then(({ data }) => setForm((f) => ({ ...f, invoiceNumber: data?.data?.invoiceNumber || "" })))
       .catch((err) => notifyError(err));
   }, [isEdit]);
+
+  useEffect(() => {
+    if (isEdit || !companySettings) return;
+    setForm((f) => ({ ...f, from: invoiceFromDefaults(companySettings) }));
+  }, [companySettings, isEdit]);
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setFrom  = (k, v) => setForm((f) => ({ ...f, from:   { ...f.from,   [k]: v } }));

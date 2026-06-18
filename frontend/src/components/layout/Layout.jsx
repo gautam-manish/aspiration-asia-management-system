@@ -197,6 +197,22 @@ export default function Layout({ children }) {
               </div>
             </div>
           )}
+          {userRole === "admin" && (
+            <NavLink
+              to="/settings/company"
+              className={({ isActive }) =>
+                `flex items-center gap-3 w-full px-2 py-2 rounded-lg text-sm transition-colors ${
+                  isActive
+                    ? "bg-brand-50 text-brand-700"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                }`
+              }
+              title={collapsed ? "Company Settings" : undefined}
+            >
+              <i className="fa fa-cog w-4 text-center flex-shrink-0" />
+              {!collapsed && <span>Settings</span>}
+            </NavLink>
+          )}
           <button
             onClick={askLogout}
             className="flex items-center gap-3 w-full px-2 py-2 rounded-lg text-sm text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors"

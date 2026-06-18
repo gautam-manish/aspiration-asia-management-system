@@ -8,6 +8,13 @@ import { useSundryEntry } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const COUNTRIES = ["Nepal", "India", "Bhutan"];
+const HONORIFICS = ["", "Mr.", "Mrs.", "Miss", "Dr"];
+const PHONE_COUNTRY_CODES = [
+  { code: "", label: "-" },
+  { code: "+977", label: "🇳🇵 +977" },
+  { code: "+91", label: "🇮🇳 +91" },
+  { code: "+975", label: "🇧🇹 +975" },
+];
 
 function RoleRadio({ value, onChange }) {
   return (
@@ -38,6 +45,20 @@ const fmtMoney = (n) => Number(n || 0).toLocaleString("en-IN", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+const phoneCodeLabel = (code) => ({
+  "": "-",
+  "+977": "\uD83C\uDDF3\uD83C\uDDF5 +977",
+  "+91": "\uD83C\uDDEE\uD83C\uDDF3 +91",
+  "+975": "\uD83C\uDDE7\uD83C\uDDF9 +975",
+}[code] || code);
+
+const formatPhone = (entry) => {
+  const phone = String(entry?.phone || "").trim();
+  if (!phone) return "";
+  if (phone.startsWith("+")) return phone;
+  return [entry?.phoneCountryCode, phone].filter(Boolean).join(" ");
+};
 
 export default function SundryDetailPage() {
   const { id }   = useParams();
@@ -108,7 +129,7 @@ export default function SundryDetailPage() {
             <i className="fa fa-arrow-left" />
           </button>
           <div>
-            <h1 className="page-title">{entry.contactPerson}</h1>
+            <h1 className="page-title">{[entry.honorific, entry.contactPerson].filter(Boolean).join(" ")}</h1>
             {entry.companyName && <p className="page-subtitle">{entry.companyName}</p>}
             <p className="text-xs text-slate-400 mt-0.5">Added on {formatDate(entry.createdAt)}</p>
           </div>
@@ -129,7 +150,7 @@ export default function SundryDetailPage() {
           <div className="card-header"><h3 className="font-semibold text-slate-700">Company Information</h3></div>
           <div className="card-body">
             <Row label="Company Name"    value={entry.companyName} />
-            <Row label="Contact Person"  value={<strong>{entry.contactPerson}</strong>} />
+            <Row label="Contact Person"  value={<strong>{[entry.honorific, entry.contactPerson].filter(Boolean).join(" ")}</strong>} />
             <Row label="Party Code"      value={entry.partyCode} />
             <Row label="PAN / VAT / GST" value={entry.panVatGst} />
             <Row label="Address"         value={entry.address} />
@@ -139,7 +160,7 @@ export default function SundryDetailPage() {
         <div className="card">
           <div className="card-header"><h3 className="font-semibold text-slate-700">Contact Details</h3></div>
           <div className="card-body">
-            <Row label="Contact Number" value={entry.phone} />
+            <Row label="Contact Number" value={formatPhone(entry)} />
             <Row label="Email"          value={entry.email} />
             <Row label="Party Type"     value={role === "vendor" ? "Vendor (Creditor)" : "Customer (Debtor)"} />
             <Row label="Status"         value={entry.status || "active"} />
@@ -165,21 +186,31 @@ export default function SundryDetailPage() {
                 </div>
                 <div>
                   <p className="label mb-3">Company Information</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Company Name" className="col-span-2">
+                  <div className="grid grid-cols-3 gap-3">
+                    <Field label="Company Name" className="col-span-3">
                       <input className="input" value={form.companyName || ""} onChange={(e) => set("companyName", e.target.value)} />
                     </Field>
-                    <Field label="Contact Person *">
-                      <input className="input" value={form.contactPerson || ""} onChange={(e) => set("contactPerson", e.target.value)} required />
+                    <Field label="Contact Person *" className="col-span-2">
+                      <div className="flex gap-2">
+                        <select className="input w-20 shrink-0 px-2" value={form.honorific || ""} onChange={(e) => set("honorific", e.target.value)}>
+                          {HONORIFICS.map((h) => <option key={h} value={h}>{h || "—"}</option>)}
+                        </select>
+                        <input className="input" value={form.contactPerson || ""} onChange={(e) => set("contactPerson", e.target.value)} required />
+                      </div>
                     </Field>
                     <Field label="PAN / VAT / GST">
                       <input className="input" value={form.panVatGst || ""} onChange={(e) => set("panVatGst", e.target.value)} />
                     </Field>
-                    <Field label="Address" className="col-span-2">
+                    <Field label="Address" className="col-span-3">
                       <input className="input" value={form.address || ""} onChange={(e) => set("address", e.target.value)} />
                     </Field>
-                    <Field label="Contact Number">
-                      <input className="input" type="number" value={form.phone || ""} onChange={(e) => set("phone", e.target.value)} />
+                    <Field label="Contact Number" className="col-span-3">
+                      <div className="flex gap-2">
+                        <select className="input w-24 shrink-0 px-2" value={form.phoneCountryCode || ""} onChange={(e) => set("phoneCountryCode", e.target.value)}>
+                          {PHONE_COUNTRY_CODES.map(({ code }) => <option key={code || "blank"} value={code}>{phoneCodeLabel(code)}</option>)}
+                        </select>
+                        <input className="input flex-1 min-w-0" type="tel" inputMode="tel" value={form.phone || ""} onChange={(e) => set("phone", e.target.value)} />
+                      </div>
                     </Field>
                     <Field label="Email">
                       <input className="input" type="email" value={form.email || ""} onChange={(e) => set("email", e.target.value)} />

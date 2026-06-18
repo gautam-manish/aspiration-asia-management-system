@@ -13,6 +13,7 @@ import {
   vendorPaymentAPI,
   officeExpenseAPI,
   auditLogAPI,
+  companySettingsAPI,
   journalEntryAPI,
   calculatorAPI,
   sundryAPI,
@@ -21,6 +22,13 @@ import {
   bankAccountAPI,
   reportAPI,
 } from "../api";
+
+export function useCompanySettings() {
+  return useQuery({
+    queryKey: ["company-settings"],
+    queryFn: () => companySettingsAPI.get().then((r) => r.data?.data),
+  });
+}
 
 // ── Bookings ────────────────────────────────────────────────────────────────
 export function useBookings({ status = "confirmed", search = "" } = {}) {

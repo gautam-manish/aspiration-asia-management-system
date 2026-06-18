@@ -33,6 +33,12 @@ const querySchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    clientHonorific: {
+      type: String,
+      enum: ["", "Mr.", "Mrs.", "Miss", "Dr"],
+      default: "",
+      trim: true,
+    },
     clientName: {
       type: String,
       required: [true, "Client name is required"],

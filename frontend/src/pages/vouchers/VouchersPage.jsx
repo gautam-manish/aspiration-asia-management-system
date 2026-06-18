@@ -12,6 +12,11 @@ const EMPTY_ROOM = { roomCategory: "", noOfRooms: "", roomType: "" };
 
 const generateConfirmationNumber = () => Math.floor(100000 + Math.random() * 900000).toString();
 const cleanConfirmationNumber = (value) => String(value || "").replace(/\D/g, "").slice(0, 6);
+const formatHotelContactNumbers = (hotel = {}) => (
+  Array.isArray(hotel.contactNumbers)
+    ? hotel.contactNumbers.map((n) => String(n || "").trim()).filter(Boolean).slice(0, 2).join(" | ")
+    : ""
+);
 
 const EMPTY_HOTEL = {
   confirmationNumber:"", hotelName:"", hotelCity:"", hotelCountry:"",
@@ -45,7 +50,7 @@ function VoucherModal({ onClose, onSaved }) {
       hotelName:          h.name || "",
       hotelCity:          h.city || "",
       hotelCountry:       h.country || "",
-      hotelContactNumber: (h.contactNumbers && h.contactNumbers[0]) || "",
+      hotelContactNumber: formatHotelContactNumbers(h),
       googleMapsLink:     h.googleMapUrl || "",
     };
     return { ...f, hotels: list };
@@ -227,18 +232,20 @@ function VoucherModal({ onClose, onSaved }) {
                   <Field label="Contact Number">
                     <input className="input" value={h.hotelContactNumber} onChange={(e) => setHotel(i, "hotelContactNumber", e.target.value)} />
                   </Field>
-                  <Field label="1st Check-In">
-                    <input className="input" type="date" value={h.visit1in} onChange={(e) => setHotel(i, "visit1in", e.target.value)} />
-                  </Field>
-                  <Field label="1st Check-Out">
-                    <input className="input" type="date" value={h.visit1out} onChange={(e) => setHotel(i, "visit1out", e.target.value)} />
-                  </Field>
-                  <Field label="2nd Check-In">
-                    <input className="input" type="date" value={h.visit2in} onChange={(e) => setHotel(i, "visit2in", e.target.value)} />
-                  </Field>
-                  <Field label="2nd Check-Out">
-                    <input className="input" type="date" value={h.visit2out} onChange={(e) => setHotel(i, "visit2out", e.target.value)} />
-                  </Field>
+                  <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="1st Check-In">
+                      <input className="input" type="date" value={h.visit1in} onChange={(e) => setHotel(i, "visit1in", e.target.value)} />
+                    </Field>
+                    <Field label="1st Check-Out">
+                      <input className="input" type="date" value={h.visit1out} onChange={(e) => setHotel(i, "visit1out", e.target.value)} />
+                    </Field>
+                    <Field label="2nd Check-In">
+                      <input className="input" type="date" value={h.visit2in} onChange={(e) => setHotel(i, "visit2in", e.target.value)} />
+                    </Field>
+                    <Field label="2nd Check-Out">
+                      <input className="input" type="date" value={h.visit2out} onChange={(e) => setHotel(i, "visit2out", e.target.value)} />
+                    </Field>
+                  </div>
                   <Field label="Includes">
                     <input className="input" value={h.includes} onChange={(e) => setHotel(i, "includes", e.target.value)} placeholder="Breakfast, WiFi…" />
                   </Field>
@@ -336,7 +343,7 @@ export default function VouchersPage() {
 
       <div className="card">
         <div className="card-header flex-wrap gap-2">
-          <SearchBar value={search} onChange={setSearch} placeholder="Search by guest…" />
+          <SearchBar value={search} onChange={setSearch} placeholder="Search by guest or booking ID..." />
           <input type="date" className="input w-auto" value={date} onChange={(e) => setDate(e.target.value)} />
           {date && <button onClick={() => setDate("")} className="btn-ghost text-xs">Clear</button>}
           <span className="text-sm text-slate-500 ml-auto">

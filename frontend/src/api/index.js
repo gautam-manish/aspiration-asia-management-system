@@ -146,6 +146,12 @@ export const auditLogAPI = {
   getAll: (params) => api.get("/audit-logs", { params }),
 };
 
+// Company Settings
+export const companySettingsAPI = {
+  get:    ()     => api.get("/company-settings"),
+  update: (data) => api.put("/company-settings", data),
+};
+
 // Journal Entries
 export const journalEntryAPI = {
   getAll: (params) => api.get("/journal-entries", { params }),

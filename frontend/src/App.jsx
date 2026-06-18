@@ -43,6 +43,7 @@ const PurchaseRecordsPage = lazy(() => import("./pages/purchaseRecords/PurchaseR
 const PurchaseRecordDetailPage = lazy(() => import("./pages/purchaseRecords/PurchaseRecordDetailPage"));
 const PackageCostPage = lazy(() => import("./pages/packageCost/PackageCostPage"));
 const BankAccountsPage = lazy(() => import("./pages/bankAccounts/BankAccountsPage"));
+const CompanySettingsPage = lazy(() => import("./pages/settings/CompanySettingsPage"));
 
 function P({ children }) {
   return <ProtectedRoute>{children}</ProtectedRoute>;
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="/purchase-records/:id"      element={<P><PurchaseRecordDetailPage /></P>} />
         <Route path="/bank-accounts"              element={<P><BankAccountsPage /></P>} />
         <Route path="/package-cost"              element={<P><PackageCostPage /></P>} />
+        <Route path="/settings/company"          element={<P><CompanySettingsPage /></P>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

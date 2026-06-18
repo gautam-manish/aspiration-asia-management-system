@@ -17,6 +17,12 @@ const sundrySchema = new mongoose.Schema(
       required: [true, "Contact person is required"],
       trim:     true,
     },
+    honorific: {
+      type:    String,
+      enum:    ["", "Mr.", "Mrs.", "Miss", "Dr"],
+      default: "",
+      trim:    true,
+    },
     panVatGst: {
       type:  String,
       trim:  true,
@@ -31,6 +37,12 @@ const sundrySchema = new mongoose.Schema(
       type:  String,
       trim:  true,
       default: "",
+    },
+    phoneCountryCode: {
+      type:    String,
+      enum:    ["", "+977", "+91", "+975"],
+      default: "+977",
+      trim:    true,
     },
     email: {
       type:      String,

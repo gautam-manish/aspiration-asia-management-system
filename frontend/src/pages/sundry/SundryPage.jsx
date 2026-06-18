@@ -9,13 +9,27 @@ import { useSundryPaginated } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
 const COUNTRIES = ["Nepal", "India", "Bhutan"];
+const HONORIFICS = ["", "Mr.", "Mrs.", "Miss", "Dr"];
+const PHONE_COUNTRY_CODES = [
+  { code: "", label: "-" },
+  { code: "+977", label: "🇳🇵 +977" },
+  { code: "+91", label: "🇮🇳 +91" },
+  { code: "+975", label: "🇧🇹 +975" },
+];
 
 const EMPTY_FORM = {
-  type: "debtor", companyName: "", contactPerson: "",
-  panVatGst: "", address: "", phone: "", email: "", country: "",
+  type: "debtor", companyName: "", honorific: "", contactPerson: "",
+  panVatGst: "", address: "", phoneCountryCode: "+977", phone: "", email: "", country: "",
   roles: ["customer"], status: "active",
   openingBalance: "", notes: "",
 };
+
+const phoneCodeLabel = (code) => ({
+  "": "-",
+  "+977": "\uD83C\uDDF3\uD83C\uDDF5 +977",
+  "+91": "\uD83C\uDDEE\uD83C\uDDF3 +91",
+  "+975": "\uD83C\uDDE7\uD83C\uDDF9 +975",
+}[code] || code);
 
 function RoleRadio({ value, onChange }) {
   return (
@@ -168,8 +182,8 @@ function SundryModal({ entry, onClose, onSaved }) {
             </div>
             <div>
               <p className="label mb-3">Party Information</p>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Party Code">
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Party Code" className="col-span-2">
                   <input className="input bg-slate-50 font-mono text-brand-600 cursor-not-allowed" value={codeLoading ? "Generating..." : (form.partyCode || "")} readOnly />
                 </Field>
                 <Field label="Status">
@@ -178,24 +192,34 @@ function SundryModal({ entry, onClose, onSaved }) {
                     <option value="inactive">Inactive</option>
                   </select>
                 </Field>
-                <Field label="Company Name" className="col-span-2">
+                <Field label="Company Name" className="col-span-3">
                   <input className={`input ${errCls("companyName")}`} value={form.companyName} onChange={(e) => set("companyName", e.target.value)} maxLength={150} />
                   {errors.companyName && <p className="text-xs text-red-500 mt-1">{errors.companyName}</p>}
                 </Field>
-                <Field label="Contact Person *">
-                  <input className={`input ${errCls("contactPerson")}`} value={form.contactPerson} onChange={(e) => set("contactPerson", e.target.value)} required maxLength={100} />
+                <Field label="Contact Person *" className="col-span-2">
+                  <div className="flex gap-2">
+                    <select className="input w-20 shrink-0 px-2" value={form.honorific || ""} onChange={(e) => set("honorific", e.target.value)}>
+                      {HONORIFICS.map((h) => <option key={h} value={h}>{h || "—"}</option>)}
+                    </select>
+                    <input className={`input ${errCls("contactPerson")}`} value={form.contactPerson} onChange={(e) => set("contactPerson", e.target.value)} required maxLength={100} />
+                  </div>
                   {errors.contactPerson && <p className="text-xs text-red-500 mt-1">{errors.contactPerson}</p>}
                 </Field>
                 <Field label="PAN / VAT / GST">
                   <input className={`input ${errCls("panVatGst")}`} value={form.panVatGst} onChange={(e) => set("panVatGst", e.target.value)} maxLength={20} />
                   {errors.panVatGst && <p className="text-xs text-red-500 mt-1">{errors.panVatGst}</p>}
                 </Field>
-                <Field label="Address" className="col-span-2">
+                <Field label="Address" className="col-span-3">
                   <input className={`input ${errCls("address")}`} value={form.address} onChange={(e) => set("address", e.target.value)} maxLength={250} />
                   {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address}</p>}
                 </Field>
-                <Field label="Contact Number">
-                  <input className={`input ${errCls("phone")}`} type="tel" inputMode="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+977 9812345678" />
+                <Field label="Contact Number" className="col-span-3">
+                  <div className="flex gap-2">
+                    <select className="input w-24 shrink-0 px-2" value={form.phoneCountryCode || ""} onChange={(e) => set("phoneCountryCode", e.target.value)}>
+                      {PHONE_COUNTRY_CODES.map(({ code }) => <option key={code || "blank"} value={code}>{phoneCodeLabel(code)}</option>)}
+                    </select>
+                    <input className={`input flex-1 min-w-0 ${errCls("phone")}`} type="tel" inputMode="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="9812345678" />
+                  </div>
                   {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone}</p>}
                 </Field>
                 <Field label="Email">
@@ -212,7 +236,7 @@ function SundryModal({ entry, onClose, onSaved }) {
                   <input className={`input ${errCls("openingBalance")}`} type="number" min="0" value={form.openingBalance || ""} onChange={(e) => set("openingBalance", e.target.value)} />
                   {errors.openingBalance && <p className="text-xs text-red-500 mt-1">{errors.openingBalance}</p>}
                 </Field>
-                <Field label="Notes" className="col-span-2">
+                <Field label="Notes" className="col-span-3">
                   <textarea className={`input min-h-[80px] ${errCls("notes")}`} value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} maxLength={500} />
                   {errors.notes && <p className="text-xs text-red-500 mt-1">{errors.notes}</p>}
                 </Field>
@@ -304,7 +328,7 @@ export default function SundryPage() {
                         <p className="font-medium text-slate-800">{s.companyName || "-"}</p>
                         {s.partyCode && <p className="text-xs font-mono text-brand-600">{s.partyCode}</p>}
                       </td>
-                      <td>{s.contactPerson}</td>
+                      <td>{[s.honorific, s.contactPerson].filter(Boolean).join(" ")}</td>
                       <td>
                         <div className="flex gap-1 flex-wrap">
                           {(s.roles?.length ? s.roles : [s.type === "creditor" ? "vendor" : "customer"]).map((role) => (

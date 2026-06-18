@@ -24,10 +24,14 @@ const NATIONALITIES = [
   "Qatari","Romanian","Russian","Saudi","Singaporean","South African","Spanish",
   "Sri Lankan","Swedish","Swiss","Thai","Turkish","Ukrainian","Vietnamese",
 ];
-const ROOM_TYPES = ["Single Room","Double Room","DORM","Suite","Triple Room","Quard Room"];
 const MEAL_PLANS = ["EP","CP","MAP","AP","JP"];
 const generateConfirmationNumber = () => Math.floor(100000 + Math.random() * 900000).toString();
 const cleanConfirmationNumber = (value) => String(value || "").replace(/\D/g, "").slice(0, 6);
+const formatHotelContactNumbers = (hotel = {}) => (
+  Array.isArray(hotel.contactNumbers)
+    ? hotel.contactNumbers.map((n) => String(n || "").trim()).filter(Boolean).slice(0, 2).join(" | ")
+    : ""
+);
 
 // ─── Exact original PDF template ─────────────────────────────────────────────
 export function VoucherPDF({ v }) {
@@ -284,12 +288,16 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
       childWithoutBed: voucher.pax?.childWithoutBed || "",
       childBelow5:     voucher.pax?.childBelow5 || "",
     },
-    hotelEntries: (voucher.hotels || []).map((h) => ({
-      ...h,
-      rooms: (h.rooms && h.rooms.length > 0)
-        ? h.rooms.map((r) => ({ ...r }))
-        : [{ roomCategory: h.roomCategory || "", noOfRooms: h.noOfRooms || "", roomType: h.roomType || "" }],
-    })),
+    hotelEntries: (voucher.hotels || []).map((h) => {
+      const matchedHotel = hotels.find((hotel) => String(hotel.name || "").toLowerCase() === String(h.hotelName || "").toLowerCase());
+      return {
+        ...h,
+        hotelContactNumber: h.hotelContactNumber || formatHotelContactNumbers(matchedHotel),
+        rooms: (h.rooms && h.rooms.length > 0)
+          ? h.rooms.map((r) => ({ ...r }))
+          : [{ roomCategory: h.roomCategory || "", noOfRooms: h.noOfRooms || "", roomType: h.roomType || "" }],
+      };
+    }),
   });
   const [saving, setSaving] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
@@ -388,7 +396,7 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
         hotelName:          picked.name || "",
         hotelCity:          picked.city || "",
         hotelCountry:       picked.country || "",
-        hotelContactNumber: (picked.contactNumbers && picked.contactNumbers[0]) || entries[i].hotelContactNumber || "",
+        hotelContactNumber: formatHotelContactNumbers(picked) || entries[i].hotelContactNumber || "",
         googleMapsLink:     picked.googleMapUrl || entries[i].googleMapsLink || "",
       };
       return { ...f, hotelEntries: entries };
@@ -507,11 +515,13 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
                         {MEAL_PLANS.map((m) => <option key={m}>{m}</option>)}
                       </select>
                     </Field>
-                    <Field label="1st Check-In"><input className="input" type="date" value={h.visit1in && h.visit1in !== "N/A" ? h.visit1in : ""} onChange={(e) => setHotel(i, "visit1in", e.target.value)} /></Field>
-                    <Field label="1st Check-Out"><input className="input" type="date" value={h.visit1out && h.visit1out !== "N/A" ? h.visit1out : ""} onChange={(e) => setHotel(i, "visit1out", e.target.value)} /></Field>
-                    <Field label="2nd Check-In"><input className="input" type="date" value={h.visit2in && h.visit2in !== "N/A" ? h.visit2in : ""} onChange={(e) => setHotel(i, "visit2in", e.target.value)} /></Field>
-                    <Field label="2nd Check-Out"><input className="input" type="date" value={h.visit2out && h.visit2out !== "N/A" ? h.visit2out : ""} onChange={(e) => setHotel(i, "visit2out", e.target.value)} /></Field>
-                    <Field label="Hotel Contact"><input className="input" type="number" value={h.hotelContactNumber} onChange={(e) => setHotel(i, "hotelContactNumber", e.target.value)} /></Field>
+                    <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <Field label="1st Check-In"><input className="input" type="date" value={h.visit1in && h.visit1in !== "N/A" ? h.visit1in : ""} onChange={(e) => setHotel(i, "visit1in", e.target.value)} /></Field>
+                      <Field label="1st Check-Out"><input className="input" type="date" value={h.visit1out && h.visit1out !== "N/A" ? h.visit1out : ""} onChange={(e) => setHotel(i, "visit1out", e.target.value)} /></Field>
+                      <Field label="2nd Check-In"><input className="input" type="date" value={h.visit2in && h.visit2in !== "N/A" ? h.visit2in : ""} onChange={(e) => setHotel(i, "visit2in", e.target.value)} /></Field>
+                      <Field label="2nd Check-Out"><input className="input" type="date" value={h.visit2out && h.visit2out !== "N/A" ? h.visit2out : ""} onChange={(e) => setHotel(i, "visit2out", e.target.value)} /></Field>
+                    </div>
+                    <Field label="Hotel Contact"><input className="input" type="text" value={h.hotelContactNumber || ""} onChange={(e) => setHotel(i, "hotelContactNumber", e.target.value)} /></Field>
                     <Field label="Google Maps Link"><input className="input" value={h.googleMapsLink} onChange={(e) => setHotel(i, "googleMapsLink", e.target.value)} /></Field>
                     <Field label="Includes" className="col-span-2"><input className="input" value={h.includes} onChange={(e) => setHotel(i, "includes", e.target.value)} /></Field>
                   </div>
@@ -539,10 +549,7 @@ function EditModal({ voucher, hotels, onClose, onSaved }) {
                             <input className="input" value={r.roomCategory} onChange={(e) => setRoom(i, ri, "roomCategory", e.target.value)} />
                           </Field>
                           <Field label="Room Type">
-                            <select className="input" value={r.roomType} onChange={(e) => setRoom(i, ri, "roomType", e.target.value)}>
-                              <option value="">—</option>
-                              {ROOM_TYPES.map((t) => <option key={t}>{t}</option>)}
-                            </select>
+                            <input className="input" value={r.roomType} onChange={(e) => setRoom(i, ri, "roomType", e.target.value)} />
                           </Field>
                           <Field label="No. of Rooms">
                             <input className="input" value={r.noOfRooms} onChange={(e) => setRoom(i, ri, "noOfRooms", e.target.value)} />

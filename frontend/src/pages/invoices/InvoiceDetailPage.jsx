@@ -6,7 +6,7 @@ import { numberToWords, notifyError } from "../../utils/helpers";
 import { PageLoader, Field } from "../../components/common";
 import AuditTrailPanel from "../../components/common/AuditTrailPanel";
 import { InvoiceModal } from "./InvoicesPage";
-import { useInvoice } from "../../hooks/useApiQueries";
+import { useCompanySettings, useInvoice } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 
@@ -36,6 +36,22 @@ const fmtSize = (bytes) => {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 };
+
+const DEFAULT_COMPANY_SETTINGS = {
+  companyName: "Aspiration Asia Trekking & Expedition Pvt Ltd",
+  addressLine: "Near Nyatapol Temple Bhaktapur, Nepal",
+  phone: "+977 9746239349",
+  email: "account@aspirationasia.com",
+  panNumber: "610278626",
+  registrationNumber: "290216/78/079",
+  logoUrl: "https://i.ibb.co/bRJr7nNM/images.png",
+  invoiceAccountName: "Aspiration Asia Trekking",
+};
+
+const mergeCompanySettings = (settings) => ({
+  ...DEFAULT_COMPANY_SETTINGS,
+  ...(settings || {}),
+});
 
 function AddAdvanceModal({ invoice, onClose, onSaved }) {
   const cur = invoice.currency || "Rs.";
@@ -156,6 +172,8 @@ function AddAdvanceModal({ invoice, onClose, onSaved }) {
 }
 
 export function InvoicePrint({ inv }) {
+  const { data: settingsData } = useCompanySettings();
+  const company = mergeCompanySettings(settingsData);
   const cur = inv.currency || "Rs.";
 
   const fmt = (n) => Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -183,23 +201,23 @@ export function InvoicePrint({ inv }) {
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
             <div style={{ width: 70, height: 70, flexShrink: 0, overflow: "hidden" }}>
               <img
-                src="https://i.ibb.co/bRJr7nNM/images.png"
+                src={company.logoUrl}
                 style={{ width: "100%", height: "100%", objectFit: "contain" }}
                 alt="logo"
               />
             </div>
             <div>
               <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#1e293b", marginBottom: 4, lineHeight: 1.2 }}>
-                Aspiration Asia Trekking &amp; Expedition Pvt Ltd
+                {company.companyName}
               </div>
               <div style={{ fontSize: "0.88rem", color: "#475569", lineHeight: 1.55 }}>
-                <div>Near Nyatapol Temple Bhaktapur, Nepal</div>
+                <div>{company.addressLine}</div>
                 <div>
-                  +977 9746239349 <span style={{ color: "#1e293b" }}>|</span>{" "}
-                  <span style={{ color: "#2563eb" }}>account@aspirationasia.com</span>
+                  {company.phone} <span style={{ color: "#1e293b" }}>|</span>{" "}
+                  <span style={{ color: "#2563eb" }}>{company.email}</span>
                 </div>
-                <div><strong style={{ color: "#1e293b" }}>PAN:</strong> 610278626</div>
-                <div><strong style={{ color: "#1e293b" }}>Registration No:</strong> 290216/78/079</div>
+                <div><strong style={{ color: "#1e293b" }}>PAN:</strong> {company.panNumber}</div>
+                <div><strong style={{ color: "#1e293b" }}>Registration No:</strong> {company.registrationNumber}</div>
               </div>
             </div>
           </div>
@@ -331,7 +349,7 @@ export function InvoicePrint({ inv }) {
             <div style={{ fontSize: "0.85rem", color: "#475569", lineHeight: 1.7 }}>
               <div><span style={{ fontWeight: "bold" }}>Bank Name:</span> {inv.accountDetails?.bankName || "Everest Bank Limited"}</div>
               <div><span style={{ fontWeight: "bold" }}>Account No:</span> {inv.accountDetails?.accountNo || "94EBLN02600105200710ASPIR"}</div>
-              <div><span style={{ fontWeight: "bold" }}>Account Name:</span> {inv.accountDetails?.accountName || "Aspiration Asia Trekking"}</div>
+              <div><span style={{ fontWeight: "bold" }}>Account Name:</span> {inv.accountDetails?.accountName || company.invoiceAccountName}</div>
               <div><span style={{ fontWeight: "bold" }}>IFSC:</span> {inv.accountDetails?.ifsc || "HDFC0000240"}</div>
               <div><span style={{ fontWeight: "bold" }}>Branch:</span> {inv.accountDetails?.branch || "Sandoz Bazar"}</div>
             </div>
@@ -356,6 +374,7 @@ export default function InvoiceDetailPage() {
 
   const qc = useQueryClient();
   const { data: invData, isLoading: invLoading, error: invError } = useInvoice(id);
+  const { data: settingsData } = useCompanySettings();
 
   useEffect(() => { if (invData) setInv(invData); }, [invData]);
   useEffect(() => { setLoading(invLoading); }, [invLoading]);
@@ -389,6 +408,7 @@ export default function InvoiceDetailPage() {
   const paymentStatus = paymentSummary.status || "unpaid";
   const isAdmin = user?.role === "admin";
   const canAddAdvance = isAdmin || user?.role === "accountant";
+  const company = mergeCompanySettings(settingsData);
 
   return (
     <div>
@@ -433,13 +453,13 @@ export default function InvoiceDetailPage() {
           <div className="card-body">
             <div className="flex items-start justify-between gap-4">
               <div className="flex gap-3 items-start">
-                <img src="https://i.ibb.co/bRJr7nNM/images.png" className="w-16 h-16 object-contain" alt="logo" onError={(e) => (e.target.style.display = "none")} />
+                <img src={company.logoUrl} className="w-16 h-16 object-contain" alt="logo" onError={(e) => (e.target.style.display = "none")} />
                 <div>
-                  <p className="font-bold text-slate-800">Aspiration Asia Trekking &amp; Expedition Pvt Ltd</p>
-                  <p className="text-xs text-slate-500">Near Nyatapol Temple Bhaktapur, Nepal</p>
-                  <p className="text-xs text-slate-500">+977 9746239349 <span className="text-slate-800">|</span> <span className="text-brand-600">account@aspirationasia.com</span></p>
-                  <p className="text-xs text-slate-500"><span className="font-bold text-slate-800">PAN:</span> 610278626</p>
-                  <p className="text-xs text-slate-500"><span className="font-bold text-slate-800">Registration No:</span> 290216/78/079</p>
+                  <p className="font-bold text-slate-800">{company.companyName}</p>
+                  <p className="text-xs text-slate-500">{company.addressLine}</p>
+                  <p className="text-xs text-slate-500">{company.phone} <span className="text-slate-800">|</span> <span className="text-brand-600">{company.email}</span></p>
+                  <p className="text-xs text-slate-500"><span className="font-bold text-slate-800">PAN:</span> {company.panNumber}</p>
+                  <p className="text-xs text-slate-500"><span className="font-bold text-slate-800">Registration No:</span> {company.registrationNumber}</p>
                 </div>
               </div>
               <div className="text-right">
@@ -611,7 +631,7 @@ export default function InvoiceDetailPage() {
               <div className="text-sm text-slate-600 space-y-1">
                 <p><span className="font-semibold">Bank:</span> {inv.accountDetails?.bankName || "Everest Bank Limited"}</p>
                 <p><span className="font-semibold">Account No:</span> {inv.accountDetails?.accountNo || "94EBLN02600105200710ASPIR"}</p>
-                <p><span className="font-semibold">Account Name:</span> {inv.accountDetails?.accountName || "Aspiration Asia Trekking"}</p>
+                <p><span className="font-semibold">Account Name:</span> {inv.accountDetails?.accountName || company.invoiceAccountName}</p>
                 <p><span className="font-semibold">IFSC:</span> {inv.accountDetails?.ifsc || "HDFC0000240"}</p>
                 <p><span className="font-semibold">Branch:</span> {inv.accountDetails?.branch || "Sandoz Bazar"}</p>
               </div>

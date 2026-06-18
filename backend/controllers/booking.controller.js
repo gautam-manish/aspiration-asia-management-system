@@ -2,6 +2,8 @@ import Booking from "../models/booking.model.js";
 import Sundry from "../models/sundry.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
 
+const HONORIFICS = ["", "Mr.", "Mrs.", "Miss", "Dr"];
+
 // ─────────────────────────────────────────
 // Helper: generate next Booking ID
 // Format: ASA{year}{runningNumber}
@@ -81,6 +83,7 @@ export const createBooking = async (req, res) => {
       customerId,
       companyName,
       contactPerson,
+      clientHonorific,
       clientName,
       email,
       mobile,
@@ -108,6 +111,11 @@ export const createBooking = async (req, res) => {
           message: "Client name is required",
           data: null,
         });
+    }
+    if (!HONORIFICS.includes(String(clientHonorific || "").trim())) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Client honorific must be Mr., Mrs., Miss, Dr, or empty", data: null });
     }
     if (!customerId) {
       return res
@@ -150,6 +158,7 @@ export const createBooking = async (req, res) => {
       customerId: customerId || null,
       companyName: debtor.companyName || companyName || "",
       contactPerson: debtor.contactPerson || contactPerson || "",
+      clientHonorific: String(clientHonorific || "").trim(),
       clientName,
       email: email || debtor.email || "",
       mobile: mobile || debtor.phone || "",
@@ -331,7 +340,7 @@ export const updateBooking = async (req, res) => {
 
     // Whitelist allowed fields to prevent mass assignment
     const allowedFields = [
-      "customerId", "clientName", "companyName", "contactPerson", "email", "mobile", "address",
+      "customerId", "clientHonorific", "clientName", "companyName", "contactPerson", "email", "mobile", "address",
       "destination", "pickupPoint", "dropPoint",
       "arrivalDate", "departureDate", "noOfDays",
       "adults", "childEB", "childNoEB", "childU5",
@@ -340,6 +349,14 @@ export const updateBooking = async (req, res) => {
     const updates = {};
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    if (updates.clientHonorific !== undefined) {
+      updates.clientHonorific = String(updates.clientHonorific || "").trim();
+      if (!HONORIFICS.includes(updates.clientHonorific)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Client honorific must be Mr., Mrs., Miss, Dr, or empty", data: null });
+      }
     }
     if (updates.customerId === "") updates.customerId = null;
     if (updates.customerId) {

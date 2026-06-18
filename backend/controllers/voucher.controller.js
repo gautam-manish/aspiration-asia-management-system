@@ -1,5 +1,6 @@
 import Voucher from "../models/voucher.model.js";
 import escapeRegex from "../utils/escapeRegex.js";
+import mongoose from "mongoose";
 
 const generateConfirmationNumber = () => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -43,7 +44,7 @@ export const createVoucher = async (req, res) => {
 };
 
 // ─────────────────────────────────────────
-// @desc    Get All Vouchers (search by guest name or date).
+// @desc    Get All Vouchers (search by guest name, booking ID, or date).
 //          - GET /api/vouchers?search=&date=                  → returns ALL matching (back-compat)
 //          - GET /api/vouchers?search=&date=&page=1&limit=50  → paginated; envelope adds total/page/limit/totalPages
 // @route   GET /api/vouchers
@@ -54,7 +55,11 @@ export const getAllVouchers = async (req, res) => {
     const query = {};
 
     if (search) {
-      query.guestName = { $regex: escapeRegex(search), $options: "i" };
+      const escaped = escapeRegex(search);
+      query.$or = [
+        { guestName: { $regex: escaped, $options: "i" } },
+        { bookingId: { $regex: escaped, $options: "i" } },
+      ];
     }
 
     if (date) {
@@ -106,7 +111,12 @@ export const getAllVouchers = async (req, res) => {
 // ─────────────────────────────────────────
 export const getVoucherById = async (req, res) => {
   try {
-    const voucher = await Voucher.findById(req.params.id);
+    const id = String(req.params.id || "").trim();
+    const lookup = mongoose.Types.ObjectId.isValid(id)
+      ? { $or: [{ _id: id }, { bookingId: id }] }
+      : { bookingId: id };
+
+    const voucher = await Voucher.findOne(lookup).sort({ createdAt: -1 });
     if (!voucher) {
       return res.status(404).json({ success: false, message: "Voucher not found", data: null });
     }

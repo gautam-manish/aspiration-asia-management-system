@@ -8,13 +8,24 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useBookingsPaginated, useBookingMutations, useSundryDropdown } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
 
+const HONORIFICS = ["", "Mr.", "Mrs.", "Miss", "Dr."];
+
 const EMPTY_FORM = {
-  queryId:"", customerId:"", companyName:"", contactPerson:"", clientName:"", email:"", mobile:"", address:"",
+  queryId:"", customerId:"", companyName:"", contactPerson:"", clientHonorific:"", clientName:"", email:"", mobile:"", address:"",
   destination:"Nepal", pickupPoint:"", dropPoint:"",
   arrivalDate:"", departureDate:"", noOfDays:"",
   adults:0, childEB:0, childNoEB:0, childU5:0, rooms:0,
   hotelCategory:"", mealPlan:"",
 };
+
+const fullClientName = (booking) => [booking?.clientHonorific, booking?.clientName].filter(Boolean).join(" ");
+
+const formatPax = (booking) => [
+  Number(booking?.adults || 0) ? `${Number(booking.adults)}A` : "",
+  Number(booking?.childEB || 0) ? `${Number(booking.childEB)}CWB` : "",
+  Number(booking?.childNoEB || 0) ? `${Number(booking.childNoEB)}CNB` : "",
+  Number(booking?.childU5 || 0) ? `${Number(booking.childU5)}CU5` : "",
+].filter(Boolean).join(" ") || "0A";
 
 /* ── helper: calculate nights/days string ──────────────────────── */
 function calcDays(arrival, departure) {
@@ -164,7 +175,12 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
                 <input className="input" value={form.contactPerson || ""} onChange={(e) => set("contactPerson", e.target.value)} placeholder="Contact person" />
               </Field>
               <Field label="Client Name" required>
-                <input className="input" value={form.clientName} onChange={(e) => set("clientName", e.target.value)} placeholder="Enter client name" required />
+                <div className="flex gap-2">
+                  <select className="input w-20 shrink-0 px-2" value={form.clientHonorific || ""} onChange={(e) => set("clientHonorific", e.target.value)}>
+                    {HONORIFICS.map((h) => <option key={h} value={h}>{h || "-"}</option>)}
+                  </select>
+                  <input className="input flex-1 min-w-0" value={form.clientName} onChange={(e) => set("clientName", e.target.value)} placeholder="Enter client name" required />
+                </div>
               </Field>
               <Field label="Email" required>
                 <input className="input" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} required />
@@ -201,7 +217,7 @@ function BookingModal({ booking, nextId, onClose, onSaved }) {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {[["adults","Adults"],["childEB","Child EB"],["childNoEB","Child No EB"],["childU5","Child U5"],["rooms","Rooms"]].map(([k, lbl]) => (
+              {[["adults","Adults"],["childEB","Child with Extra Bed"],["childNoEB","Child with no Extra Bed"],["childU5","Child (5yrs and below)"],["rooms","Rooms"]].map(([k, lbl]) => (
                 <Field key={k} label={lbl}>
                   <input className="input" type="number" min="0" value={form[k]} onChange={(e) => set(k, e.target.value)} />
                 </Field>
@@ -375,14 +391,14 @@ export default function BookingsPage() {
                     <tr key={b._id}>
                       <td className="font-mono text-xs text-brand-600 font-medium">{b.queryId}</td>
                       <td>
-                        <p className="font-medium text-slate-800">{b.clientName}</p>
+                        <p className="font-medium text-slate-800">{fullClientName(b)}</p>
                         <p className="text-xs text-slate-400">{b.companyName || b.contactPerson || b.email}</p>
                       </td>
                       <td><span className="badge badge-blue">{b.destination}</span></td>
                       <td className="text-slate-600 text-xs">{formatDate(b.arrivalDate)}</td>
                       <td className="text-slate-600 text-xs">{formatDate(b.departureDate)}</td>
                       <td className="text-xs text-slate-600">
-                        {b.adults}A {b.childEB ? `${b.childEB}CEB ` : ""}{b.childNoEB ? `${b.childNoEB}CNEB ` : ""}{b.childU5 ? `${b.childU5}U5` : ""}
+                        {formatPax(b)}
                       </td>
                       <td><StatusBadge status={b.status} /></td>
                       <td>
@@ -422,7 +438,7 @@ export default function BookingsPage() {
       <ConfirmModal
         open={!!cancelTarget}
         title="Cancel Booking"
-        message={`Cancel booking ${cancelTarget?.queryId} for ${cancelTarget?.clientName}? This cannot be reversed.`}
+        message={`Cancel booking ${cancelTarget?.queryId} for ${fullClientName(cancelTarget)}? This cannot be reversed.`}
         onConfirm={handleCancel}
         onCancel={() => setCancelTarget(null)}
         loading={updateStatus.isPending}

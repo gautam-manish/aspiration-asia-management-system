@@ -7,6 +7,8 @@ const COUNTRIES = ["Nepal", "India", "Bhutan", ""];
 const TYPES = ["debtor", "creditor"];
 const ROLES = ["customer", "vendor"];
 const STATUSES = ["active", "inactive"];
+const HONORIFICS = ["", "Mr.", "Mrs.", "Miss", "Dr"];
+const PHONE_COUNTRY_CODES = ["", "+977", "+91", "+975"];
 
 const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 const normalisePhone = (v) => String(v || "").replace(/[\s\-()]/g, "");
@@ -29,10 +31,14 @@ function validateSundryPayload(body = {}) {
 
   const data = {
     companyName: String(body.companyName || "").trim(),
+    honorific: String(body.honorific || "").trim(),
     contactPerson: String(body.contactPerson || "").trim(),
     panVatGst: String(body.panVatGst || "").trim(),
     address: String(body.address || "").trim(),
     phone: String(body.phone || "").trim(),
+    phoneCountryCode: body.phoneCountryCode === undefined || body.phoneCountryCode === null
+      ? "+977"
+      : String(body.phoneCountryCode).trim(),
     email: String(body.email || "").trim().toLowerCase(),
     country: String(body.country || "").trim(),
     type: String(body.type || "").trim().toLowerCase(),
@@ -66,6 +72,8 @@ function validateSundryPayload(body = {}) {
   if (!TYPES.includes(data.type)) errors.push("Type must be 'debtor' or 'creditor'");
   if (!COUNTRIES.includes(data.country)) errors.push("Country must be Nepal, India, Bhutan, or empty");
   if (!STATUSES.includes(data.status)) errors.push("Status must be active or inactive");
+  if (!HONORIFICS.includes(data.honorific)) errors.push("Honorific must be Mr., Mrs., Miss, Dr, or empty");
+  if (!PHONE_COUNTRY_CODES.includes(data.phoneCountryCode)) errors.push("Phone country code must be +977, +91, +975, or empty");
   if (data.roles.length !== 1 || data.roles.some((r) => !ROLES.includes(r))) errors.push("Role must be customer or vendor");
   if (data.openingBalance < 0) errors.push("Opening balance cannot be negative");
   if (data.email && !isEmail(data.email)) errors.push("Email is not a valid address");
@@ -274,7 +282,7 @@ export const getSundryDropdown = async (req, res) => {
     addCondition(filter, { $or: [{ status: "active" }, { status: { $exists: false } }] });
 
     const entries = await Sundry.find(filter)
-      .select("partyCode contactPerson companyName email phone address panVatGst country type roles openingBalance")
+      .select("partyCode honorific contactPerson companyName email phone phoneCountryCode address panVatGst country type roles openingBalance")
       .sort({ contactPerson: 1 })
       .lean();
 

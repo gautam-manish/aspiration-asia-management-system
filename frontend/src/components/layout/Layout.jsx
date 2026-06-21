@@ -27,6 +27,7 @@ const NAV_GROUPS = [
       { to: "/vendors",         icon: "fa-truck",          label: "Vendors", roles: ["admin", "accountant"] },
       { to: "/ap-aging",        icon: "fa-business-time",  label: "AP Aging", roles: ["admin", "accountant"] },
       { to: "/booking-profitability", icon: "fa-chart-pie", label: "Profitability", roles: ["admin", "accountant"] },
+      { to: "/booking-stats", icon: "fa-chart-bar", label: "Booking Stats", roles: ["admin", "accountant"] },
       { to: "/customer-ledger", icon: "fa-book-open",      label: "Customer Ledger", roles: ["admin", "accountant"] },
       { to: "/vendor-ledger",   icon: "fa-book-reader",    label: "Vendor Ledger", roles: ["admin", "accountant"] },
       { to: "/office-expenses", icon: "fa-wallet",         label: "Office Expenses", roles: ["admin", "accountant"] },

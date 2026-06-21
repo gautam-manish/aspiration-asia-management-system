@@ -4,6 +4,7 @@ import {
   getArAging,
   getAccountingReconciliation,
   getBookingProfitability,
+  getBookingStats,
   getCustomerLedger,
   getProfitLoss,
   getVendorLedger,
@@ -14,6 +15,7 @@ const router = express.Router();
 router.get("/ar-aging", getArAging);
 router.get("/ap-aging", getApAging);
 router.get("/booking-profitability", getBookingProfitability);
+router.get("/booking-stats", getBookingStats);
 router.get("/customer-ledger", getCustomerLedger);
 router.get("/vendor-ledger", getVendorLedger);
 router.get("/profit-loss", getProfitLoss);

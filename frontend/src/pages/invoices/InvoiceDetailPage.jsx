@@ -334,13 +334,13 @@ export function InvoicePrint({ inv }) {
               </div>
             )}
 
-            {/* Terms */}
             {inv.terms && (
               <div>
                 <span style={pvLabel}>Terms &amp; Conditions</span>
                 <div style={{ fontSize: "0.85rem", color: "#64748b", whiteSpace: "pre-wrap" }}>{inv.terms}</div>
               </div>
             )}
+
           </div>
 
           {/* RIGHT — Account Details */}
@@ -466,7 +466,6 @@ export default function InvoiceDetailPage() {
                 <p className="text-xl font-bold text-slate-800">{inv.title || "Invoice"}</p>
                 <p className="font-mono text-brand-600 font-semibold">{inv.invoiceNumber || ""}</p>
                 <p className="text-sm text-slate-500">{inv.invoiceDate}</p>
-                {paymentSummary.overdueDays > 0 && <p className="text-xs text-red-500">{paymentSummary.overdueDays} days overdue</p>}
               </div>
             </div>
           </div>

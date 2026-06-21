@@ -982,6 +982,16 @@ export function useBookingProfitability({ from = "", to = "", search = "" } = {}
   });
 }
 
+export function useBookingStats({ search = "", page = 1, limit = 50 } = {}) {
+  return useQuery({
+    queryKey: ["reports", "booking-stats", { search, page, limit }],
+    queryFn: () => reportAPI.getBookingStats({ search, page, limit }).then((response) => response.data?.data ?? {
+      rows: [], totals: {}, page: 1, total: 0, totalPages: 1,
+    }),
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useCustomerLedger({ customerId = "", search = "", from = "", to = "" } = {}) {
   return useQuery({
     queryKey: ["reports", "customer-ledger", { customerId, search, from, to }],

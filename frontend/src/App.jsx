@@ -25,6 +25,7 @@ const VendorPaymentsPage = lazy(() => import("./pages/vendorPayments/VendorPayme
 const VendorPaymentDetailPage = lazy(() => import("./pages/vendorPayments/VendorPaymentDetailPage"));
 const ApAgingPage = lazy(() => import("./pages/reports/ApAgingPage"));
 const BookingProfitabilityPage = lazy(() => import("./pages/reports/BookingProfitabilityPage"));
+const BookingStatsPage = lazy(() => import("./pages/reports/BookingStatsPage"));
 const CustomerLedgerPage = lazy(() => import("./pages/reports/CustomerLedgerPage"));
 const VendorLedgerPage = lazy(() => import("./pages/reports/VendorLedgerPage"));
 const OfficeExpensesPage = lazy(() => import("./pages/officeExpenses/OfficeExpensesPage"));
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="/vendor-payments/:id"       element={<P><VendorPaymentDetailPage /></P>} />
         <Route path="/ap-aging"                  element={<P><ApAgingPage /></P>} />
         <Route path="/booking-profitability"     element={<P><BookingProfitabilityPage /></P>} />
+        <Route path="/booking-stats"             element={<P><BookingStatsPage /></P>} />
         <Route path="/customer-ledger"           element={<P><CustomerLedgerPage /></P>} />
         <Route path="/vendor-ledger"             element={<P><VendorLedgerPage /></P>} />
         <Route path="/office-expenses"           element={<P><OfficeExpensesPage /></P>} />

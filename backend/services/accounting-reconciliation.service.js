@@ -5,6 +5,7 @@ import OfficeExpense from "../models/office-expense.model.js";
 import VendorBill from "../models/vendor-bill.model.js";
 import VendorPayment from "../models/vendor-payment.model.js";
 import { ACCOUNTS } from "./journal.service.js";
+import { convertAmountToNpr, getStoredInvoiceNprRate, getStoredInvoiceNprTotal } from "./exchange-rate.service.js";
 
 const round = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -39,8 +40,22 @@ function compare(name, source, journal, group) {
 }
 
 export async function buildAccountingReconciliation() {
-  const invoiceRevenue = await sourceTotal(Invoice, { total: { $gt: 0 } }, "total");
-  const customerPayments = await sourceTotal(CustomerPayment, { status: "posted", amount: { $gt: 0 } }, "amount");
+  const invoices = await Invoice.find({ total: { $gt: 0 } })
+    .select("invoiceNumber total currency currencyCode exchangeRateToNpr nprTotal")
+    .lean();
+  const invoiceRevenue = round(invoices.reduce((sum, invoice) => sum + getStoredInvoiceNprTotal(invoice), 0));
+  const invoiceById = new Map(invoices.map((invoice) => [String(invoice._id), invoice]));
+  const invoiceByNumber = new Map(invoices.map((invoice) => [String(invoice.invoiceNumber || "").toUpperCase(), invoice]));
+  const customerPaymentRows = await CustomerPayment.find({ status: "posted", amount: { $gt: 0 } })
+    .select("invoiceId invoiceNumber amount")
+    .lean();
+  const customerPayments = round(customerPaymentRows.reduce((sum, payment) => {
+    const invoice = (payment.invoiceId && invoiceById.get(String(payment.invoiceId)))
+      || invoiceByNumber.get(String(payment.invoiceNumber || "").toUpperCase());
+    return sum + (invoice
+      ? convertAmountToNpr(payment.amount, getStoredInvoiceNprRate(invoice))
+      : Number(payment.amount) || 0);
+  }, 0));
   const vendorBills = await sourceTotal(VendorBill, { status: { $ne: "void" }, total: { $gt: 0 } }, "total");
   const vendorPayments = await sourceTotal(VendorPayment, { status: "posted", amount: { $gt: 0 } }, "amount");
   const officeExpenses = await sourceTotal(OfficeExpense, { status: "posted", amount: { $gt: 0 } }, "amount");

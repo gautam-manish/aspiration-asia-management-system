@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import Invoice from "../models/invoice.model.js";
 import JournalEntry from "../models/journal-entry.model.js";
 import { ACCOUNTS, postInvoiceJournal } from "../services/journal.service.js";
+import { getStoredInvoiceNprTotal } from "../services/exchange-rate.service.js";
 
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
@@ -28,7 +29,7 @@ async function findMismatchedInvoices() {
         .filter((line) => line.accountCode === ACCOUNTS.REVENUE.code)
         .reduce((lineSum, line) => lineSum + (Number(line.credit) || 0), 0);
     }, 0));
-    const sourceTotal = round(invoice.total);
+    const sourceTotal = round(getStoredInvoiceNprTotal(invoice));
     const delta = round(sourceTotal - journalTotal);
 
     if (journals.length === 0 || Math.abs(delta) >= 0.01) {

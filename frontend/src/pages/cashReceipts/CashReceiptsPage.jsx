@@ -16,8 +16,20 @@ const EMPTY_FORM = {
   paymentMethod: "cash", bankAccountId: "",
 };
 
-function CashReceiptModal({ onClose, onSaved }) {
-  const [form, setForm]     = useState({ ...EMPTY_FORM });
+export function CashReceiptModal({
+  initialValues = {},
+  title = "New Cash Receipt",
+  submitLabel = "Create Receipt",
+  loadingLabel = "Creating...",
+  onClose,
+  onSaved,
+  onSubmit,
+}) {
+  const [form, setForm] = useState(() => {
+    const initial = { ...EMPTY_FORM, ...initialValues };
+    if (!initial.amountInWords && initial.amount) initial.amountInWords = numberToWords(initial.amount);
+    return initial;
+  });
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const { data: banks = [] } = useBankDropdown();
@@ -60,12 +72,17 @@ function CashReceiptModal({ onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.invoiceNumber.trim()) { toast.error("Invoice number is required"); return; }
-    if (!form.bookingId.trim()) { toast.error("Fetch the invoice before saving so the booking is linked"); return; }
+    if (!form.bookingId.trim()) { toast.error("Fetch the invoice before continuing so the booking is linked"); return; }
+    if (!(Number(form.amount) > 0)) { toast.error("Amount must be greater than zero"); return; }
     setLoading(true);
     try {
-      await cashReceiptAPI.create(form);
-      toast.success("Cash receipt created");
-      onSaved();
+      if (onSubmit) {
+        await onSubmit({ ...form, amount: Number(form.amount) });
+      } else {
+        const { data } = await cashReceiptAPI.create(form);
+        toast.success("Cash receipt created");
+        onSaved?.(data?.data);
+      }
     } catch (err) {
       notifyError(err);
     } finally {
@@ -77,7 +94,7 @@ function CashReceiptModal({ onClose, onSaved }) {
     <div className="modal-overlay">
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="font-display font-semibold text-slate-800">New Cash Receipt</h2>
+          <h2 className="font-display font-semibold text-slate-800">{title}</h2>
           <button onClick={onClose} className="btn-ghost p-1"><i className="fa fa-times" /></button>
         </div>
         <form onSubmit={handleSubmit}>
@@ -113,7 +130,7 @@ function CashReceiptModal({ onClose, onSaved }) {
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Amount (Rs.)" required>
-                <input className="input" type="number" min="0" value={form.amount} onChange={(e) => set("amount", e.target.value)} required />
+                <input className="input" type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => set("amount", e.target.value)} required />
               </Field>
               <Field label="Cheque / Ref No.">
                 <input className="input" value={form.cashChequeNo} onChange={(e) => set("cashChequeNo", e.target.value)} />
@@ -143,7 +160,7 @@ function CashReceiptModal({ onClose, onSaved }) {
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={loading} className="btn-primary">
-              {loading ? "Creating…" : "Create Receipt"}
+              <i className="fa fa-receipt" /> {loading ? loadingLabel : submitLabel}
             </button>
           </div>
         </form>

@@ -5,8 +5,10 @@ import VendorPayment from "../models/vendor-payment.model.js";
 import Booking from "../models/booking.model.js";
 import OfficeExpense from "../models/office-expense.model.js";
 import PurchaseRecord from "../models/purchase-record.model.js";
+import { ExchangeRateError, getStoredInvoiceNprTotal } from "../services/exchange-rate.service.js";
 import Sundry from "../models/sundry.model.js";
 import { buildAccountingReconciliation } from "../services/accounting-reconciliation.service.js";
+import escapeRegex from "../utils/escapeRegex.js";
 
 const toDateOnly = (value) => {
   if (!value) return "";
@@ -236,7 +238,7 @@ export const getBookingProfitability = async (req, res) => {
 
     const [invoices, vendorBills, purchaseRecords] = await Promise.all([
       Invoice.find(invoiceFilter)
-        .select("invoiceNumber invoiceDate bookingId customerId billTo total currency")
+        .select("invoiceNumber invoiceDate bookingId customerId billTo total currency currencyCode exchangeRateToNpr exchangeRateDate nprTotal")
         .lean(),
       VendorBill.find(billFilter)
         .select("billNumber billDate bookingId vendor total currency status")
@@ -288,7 +290,7 @@ export const getBookingProfitability = async (req, res) => {
           invoiceNumbers: [],
           vendorBillNumbers: [],
           purchaseRecordRefs: [],
-          currency: "Rs.",
+          currency: "NPR",
           month: "",
         });
       }
@@ -298,9 +300,8 @@ export const getBookingProfitability = async (req, res) => {
     for (const inv of invoices) {
       const bookingId = String(inv.bookingId || "").trim();
       const row = ensureRow(bookingId);
-      row.revenue += Number(inv.total) || 0;
+      row.revenue += getStoredInvoiceNprTotal(inv);
       row.invoiceCount += 1;
-      row.currency = inv.currency || row.currency || "Rs.";
       if (inv.invoiceNumber) row.invoiceNumbers.push(inv.invoiceNumber);
       if (!row.invoiceIds) row.invoiceIds = [];
       row.invoiceIds.push(inv._id);
@@ -315,7 +316,6 @@ export const getBookingProfitability = async (req, res) => {
       const row = ensureRow(bookingId);
       row.directCost += Number(bill.total) || 0;
       row.vendorBillCount += 1;
-      row.currency = bill.currency || row.currency || "Rs.";
       if (bill.billNumber) row.vendorBillNumbers.push(bill.billNumber);
       if (!row.vendorBillIds) row.vendorBillIds = [];
       row.vendorBillIds.push(bill._id);
@@ -410,7 +410,126 @@ export const getBookingProfitability = async (req, res) => {
     });
   } catch (error) {
     console.error("getBookingProfitability error:", error);
-    return res.status(500).json({ success: false, message: "Failed to build booking profitability report.", data: null });
+    const status = error instanceof ExchangeRateError ? error.statusCode : 500;
+    const message = error instanceof ExchangeRateError ? error.message : "Failed to build booking profitability report.";
+    return res.status(status).json({ success: false, message, data: null });
+  }
+};
+
+export const getBookingStats = async (req, res) => {
+  try {
+    const { search = "", page = 1, limit = 50 } = req.query;
+    const bookingFilter = { status: "confirmed" };
+    if (String(search).trim()) {
+      const escaped = escapeRegex(String(search).trim());
+      bookingFilter.$or = [
+        { queryId: { $regex: escaped, $options: "i" } },
+        { clientName: { $regex: escaped, $options: "i" } },
+        { companyName: { $regex: escaped, $options: "i" } },
+        { destination: { $regex: escaped, $options: "i" } },
+      ];
+    }
+
+    const bookings = await Booking.find(bookingFilter)
+      .select("queryId clientName companyName destination arrivalDate departureDate status")
+      .sort({ createdAt: -1 })
+      .lean();
+    const bookingIds = bookings.map((booking) => String(booking.queryId || "").trim()).filter(Boolean);
+    const bookingIdSet = new Set(bookingIds);
+
+    const [invoices, purchaseRecords] = bookingIds.length
+      ? await Promise.all([
+          Invoice.find({ bookingId: { $in: bookingIds } })
+            .select("invoiceNumber bookingId total currency currencyCode exchangeRateToNpr nprTotal")
+            .lean(),
+          PurchaseRecord.find({
+            transactions: { $elemMatch: { type: "cr", bookingId: { $in: bookingIds } } },
+          }).select("debtorName transactions").lean(),
+        ])
+      : [[], []];
+
+    const incomeByBooking = new Map();
+    for (const invoice of invoices) {
+      const bookingId = String(invoice.bookingId || "").trim();
+      if (!incomeByBooking.has(bookingId)) incomeByBooking.set(bookingId, { total: 0, count: 0, references: [] });
+      const entry = incomeByBooking.get(bookingId);
+      entry.total += getStoredInvoiceNprTotal(invoice);
+      entry.count += 1;
+      if (invoice.invoiceNumber) entry.references.push(invoice.invoiceNumber);
+    }
+
+    const expenseByBooking = new Map();
+    for (const record of purchaseRecords) {
+      for (const transaction of record.transactions || []) {
+        if (transaction.type !== "cr") continue;
+        const bookingId = String(transaction.bookingId || "").trim();
+        if (!bookingIdSet.has(bookingId)) continue;
+        if (!expenseByBooking.has(bookingId)) expenseByBooking.set(bookingId, { total: 0, count: 0, references: [] });
+        const entry = expenseByBooking.get(bookingId);
+        entry.total += Number(transaction.amount) || 0;
+        entry.count += 1;
+        entry.references.push(transaction.refNo || record.debtorName || "Purchase entry");
+      }
+    }
+
+    const rows = bookings.map((booking) => {
+      const bookingId = String(booking.queryId || "").trim();
+      const income = incomeByBooking.get(bookingId) || { total: 0, count: 0, references: [] };
+      const expense = expenseByBooking.get(bookingId) || { total: 0, count: 0, references: [] };
+      const totalIncome = roundMoney(income.total);
+      const totalExpense = roundMoney(expense.total);
+      const profit = roundMoney(totalIncome - totalExpense);
+      return {
+        bookingDbId: booking._id,
+        bookingId,
+        clientName: booking.clientName || "",
+        companyName: booking.companyName || "",
+        destination: booking.destination || "",
+        arrivalDate: toDateOnly(booking.arrivalDate),
+        departureDate: toDateOnly(booking.departureDate),
+        totalIncome,
+        totalExpense,
+        profit,
+        marginPercent: totalIncome > 0 ? roundMoney((profit / totalIncome) * 100) : 0,
+        invoiceCount: income.count,
+        invoiceNumbers: income.references,
+        purchaseEntryCount: expense.count,
+        purchaseReferences: expense.references,
+        currency: "NPR",
+      };
+    });
+
+    const totals = rows.reduce((sum, row) => ({
+      bookings: sum.bookings + 1,
+      income: sum.income + row.totalIncome,
+      expense: sum.expense + row.totalExpense,
+      profit: sum.profit + row.profit,
+    }), { bookings: 0, income: 0, expense: 0, profit: 0 });
+    totals.income = roundMoney(totals.income);
+    totals.expense = roundMoney(totals.expense);
+    totals.profit = roundMoney(totals.profit);
+    totals.marginPercent = totals.income > 0 ? roundMoney((totals.profit / totals.income) * 100) : 0;
+
+    const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, Number.parseInt(limit, 10) || 50));
+    const start = (pageNum - 1) * limitNum;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        rows: rows.slice(start, start + limitNum),
+        totals,
+        page: pageNum,
+        limit: limitNum,
+        total: rows.length,
+        totalPages: Math.max(1, Math.ceil(rows.length / limitNum)),
+      },
+    });
+  } catch (error) {
+    console.error("getBookingStats error:", error);
+    const status = error instanceof ExchangeRateError ? error.statusCode : 500;
+    const message = error instanceof ExchangeRateError ? error.message : "Failed to build booking stats.";
+    return res.status(status).json({ success: false, message, data: null });
   }
 };
 
@@ -734,7 +853,7 @@ export const getProfitLoss = async (req, res) => {
     }
 
     const [invoices, vendorBills, officeExpenses, purchaseRecords] = await Promise.all([
-      Invoice.find(invoiceFilter).select("invoiceNumber invoiceDate bookingId billTo total currency").lean(),
+      Invoice.find(invoiceFilter).select("invoiceNumber invoiceDate bookingId billTo total currency currencyCode exchangeRateToNpr exchangeRateDate nprTotal").lean(),
       VendorBill.find(billFilter).select("billNumber billDate bookingId vendor total currency").lean(),
       OfficeExpense.find(expenseFilter).select("expenseNumber expenseDate category paidTo description amount paymentMethod").lean(),
       PurchaseRecord.find(purchaseFilter).select("transactions").lean(),
@@ -743,7 +862,7 @@ export const getProfitLoss = async (req, res) => {
       .filter((txn) => txn.type === "cr" && String(txn.bookingId || "").trim())
       .filter((txn) => (!from || txn.date >= from) && (!to || txn.date <= to)));
 
-    const revenue = roundMoney(invoices.reduce((sum, inv) => sum + (Number(inv.total) || 0), 0));
+    const revenue = roundMoney(invoices.reduce((sum, inv) => sum + getStoredInvoiceNprTotal(inv), 0));
     const directCost = roundMoney(
       vendorBills.reduce((sum, bill) => sum + (Number(bill.total) || 0), 0)
       + purchaseCostRows.reduce((sum, txn) => sum + (Number(txn.amount) || 0), 0),
@@ -771,7 +890,7 @@ export const getProfitLoss = async (req, res) => {
       }
       return monthMap.get(month);
     };
-    for (const inv of invoices) ensureMonth(inv.invoiceDate).revenue += Number(inv.total) || 0;
+    for (const inv of invoices) ensureMonth(inv.invoiceDate).revenue += getStoredInvoiceNprTotal(inv);
     for (const bill of vendorBills) ensureMonth(bill.billDate).directCost += Number(bill.total) || 0;
     for (const txn of purchaseCostRows) ensureMonth(txn.date).directCost += Number(txn.amount) || 0;
     for (const expense of officeExpenses) ensureMonth(expense.expenseDate).operatingExpenses += Number(expense.amount) || 0;
@@ -813,7 +932,9 @@ export const getProfitLoss = async (req, res) => {
     });
   } catch (error) {
     console.error("getProfitLoss error:", error);
-    return res.status(500).json({ success: false, message: "Failed to build Profit & Loss report.", data: null });
+    const status = error instanceof ExchangeRateError ? error.statusCode : 500;
+    const message = error instanceof ExchangeRateError ? error.message : "Failed to build Profit & Loss report.";
+    return res.status(status).json({ success: false, message, data: null });
   }
 };
 

@@ -163,6 +163,7 @@ export const reportAPI = {
   getArAging: (params) => api.get("/reports/ar-aging", { params }),
   getApAging: (params) => api.get("/reports/ap-aging", { params }),
   getBookingProfitability: (params) => api.get("/reports/booking-profitability", { params }),
+  getBookingStats: (params) => api.get("/reports/booking-stats", { params }),
   getCustomerLedger: (params) => api.get("/reports/customer-ledger", { params }),
   getVendorLedger: (params) => api.get("/reports/vendor-ledger", { params }),
   getProfitLoss: (params) => api.get("/reports/profit-loss", { params }),

@@ -107,7 +107,18 @@ const invoiceSchema = new mongoose.Schema(
     totalWithTax:  { type: Number,  default: 0 },   // subtotal - discount + taxAmount
 
     total: { type: Number, default: 0 },             // Final Total Due / Balance Due
-    currency: { type: String, default: "$" },
+    currency: { type: String, default: "₹" },
+    currencyCode: { type: String, trim: true, uppercase: true, default: "INR" },
+    exchangeRateToNpr: { type: Number, min: 0, default: 0 },
+    exchangeRateDate: { type: String, trim: true, default: "" },
+    exchangeRateSource: { type: String, trim: true, default: "" },
+    exchangeRateType: {
+      type: String,
+      enum: ["", "base", "fixed", "buying"],
+      default: "",
+    },
+    exchangeRateLockedAt: { type: Date, default: null },
+    nprTotal: { type: Number, min: 0, default: 0 },
 
     // Advance payments captured after the invoice is issued.
     advancePayments: { type: [advancePaymentSchema], default: [] },

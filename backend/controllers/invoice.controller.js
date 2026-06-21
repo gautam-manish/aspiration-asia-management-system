@@ -8,6 +8,12 @@ import CustomerPayment from "../models/customer-payment.model.js";
 import { createCustomerPaymentFromInvoiceAdvance } from "./customer-payment.controller.js";
 import { postCustomerPaymentJournal, postInvoiceJournal, reverseJournalEntry } from "../services/journal.service.js";
 import { resolveBookingId } from "../utils/bookingRef.js";
+import {
+  createLockedInvoiceConversion,
+  convertAmountToNpr,
+  ExchangeRateError,
+  normalizeCurrencyCode,
+} from "../services/exchange-rate.service.js";
 
 // ─────────────────────────────────────────
 // Helper: generate a unique 8-digit ASA invoice number
@@ -244,6 +250,11 @@ export const createInvoice = async (req, res) => {
     // — even if the client suggested one — to avoid collisions and bypassing rules.
     payload.invoiceNumber = await generateUniqueInvoiceNumber();
     payload = applyInvoiceTerms(payload);
+    Object.assign(payload, await createLockedInvoiceConversion({
+      currency: payload.currency,
+      invoiceDate: payload.invoiceDate,
+      total: payload.total,
+    }));
 
     const invoice = await Invoice.create(payload);
     await postInvoiceJournal(invoice, req.user);
@@ -251,7 +262,9 @@ export const createInvoice = async (req, res) => {
     res.status(201).json({ success: true, message: "Invoice created successfully", data: enriched });
   } catch (error) {
     console.error("createInvoice error:", error);
-    res.status(400).json({ success: false, message: "Failed to create invoice.", data: null });
+    const status = error instanceof ExchangeRateError ? error.statusCode : 400;
+    const message = error instanceof ExchangeRateError ? error.message : "Failed to create invoice.";
+    res.status(status).json({ success: false, message, data: null });
   }
 };
 
@@ -340,6 +353,9 @@ export const updateInvoice = async (req, res) => {
     if (Object.keys(req.body).length === 0)
       return res.status(400).json({ success: false, message: "No data provided", data: null });
 
+    const existingInvoice = await Invoice.findById(req.params.id).lean();
+    if (!existingInvoice) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
+
     // Invoice number is server-generated and immutable
     delete req.body.invoiceNumber;
 
@@ -361,19 +377,41 @@ export const updateInvoice = async (req, res) => {
       updates.bookingId = bookingRef.bookingId;
     }
 
-    if (updates.invoiceDate !== undefined || updates.paymentTermsDays !== undefined || updates.dueDate !== undefined) {
-      const existing = await Invoice.findById(req.params.id)
-        .select("invoiceDate paymentTermsDays dueDate")
-        .lean();
-      if (!existing) return res.status(404).json({ success: false, message: "Invoice not found", data: null });
+    const existingCurrencyCode = normalizeCurrencyCode(existingInvoice.currency || existingInvoice.currencyCode);
+    const requestedCurrencyCode = normalizeCurrencyCode(updates.currency ?? existingInvoice.currency);
+    if (requestedCurrencyCode !== existingCurrencyCode) {
+      return res.status(400).json({
+        success: false,
+        message: "Invoice currency is locked after creation.",
+        data: null,
+      });
+    }
 
+    if (updates.invoiceDate !== undefined || updates.paymentTermsDays !== undefined || updates.dueDate !== undefined) {
       const merged = applyInvoiceTerms({
-        invoiceDate: updates.invoiceDate ?? existing.invoiceDate,
-        paymentTermsDays: updates.paymentTermsDays ?? existing.paymentTermsDays,
+        invoiceDate: updates.invoiceDate ?? existingInvoice.invoiceDate,
+        paymentTermsDays: updates.paymentTermsDays ?? existingInvoice.paymentTermsDays,
         dueDate: updates.dueDate ?? "",
       });
       updates.paymentTermsDays = merged.paymentTermsDays;
       updates.dueDate = merged.dueDate;
+    }
+
+    const nextTotal = updates.total ?? existingInvoice.total;
+    if (Number(existingInvoice.exchangeRateToNpr) > 0 && existingInvoice.exchangeRateDate) {
+      updates.currencyCode = existingCurrencyCode;
+      updates.exchangeRateToNpr = existingInvoice.exchangeRateToNpr;
+      updates.exchangeRateDate = existingInvoice.exchangeRateDate;
+      updates.exchangeRateSource = existingInvoice.exchangeRateSource;
+      updates.exchangeRateType = existingInvoice.exchangeRateType;
+      updates.exchangeRateLockedAt = existingInvoice.exchangeRateLockedAt;
+      updates.nprTotal = convertAmountToNpr(nextTotal, existingInvoice.exchangeRateToNpr);
+    } else {
+      Object.assign(updates, await createLockedInvoiceConversion({
+        currency: existingInvoice.currency,
+        invoiceDate: existingInvoice.invoiceDate,
+        total: nextTotal,
+      }));
     }
 
     const invoice = await Invoice.findByIdAndUpdate(
@@ -400,7 +438,9 @@ export const updateInvoice = async (req, res) => {
     res.status(200).json({ success: true, message: "Invoice updated successfully", data: enriched });
   } catch (error) {
     console.error("updateInvoice error:", error);
-    res.status(400).json({ success: false, message: "Failed to update invoice.", data: null });
+    const status = error instanceof ExchangeRateError ? error.statusCode : 400;
+    const message = error instanceof ExchangeRateError ? error.message : "Failed to update invoice.";
+    res.status(status).json({ success: false, message, data: null });
   }
 };
 

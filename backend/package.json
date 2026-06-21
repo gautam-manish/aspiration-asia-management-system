@@ -12,6 +12,7 @@
     "audit:accounting": "node scripts/reconcile-accounting.js",
     "audit:diagnose": "node scripts/diagnose-accounting.js",
     "audit:repair-invoices": "node scripts/repair-invoice-journals.js",
+    "db:backfill-invoice-npr": "node scripts/backfill-invoice-npr.js",
     "smoke:api": "node scripts/smoke-api.js"
   },
   "dependencies": {

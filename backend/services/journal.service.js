@@ -1,4 +1,6 @@
 import JournalEntry from "../models/journal-entry.model.js";
+import Invoice from "../models/invoice.model.js";
+import { convertAmountToNpr, getStoredInvoiceNprRate, getStoredInvoiceNprTotal } from "./exchange-rate.service.js";
 
 export const ACCOUNTS = {
   AR: { code: "1100", name: "Accounts Receivable" },
@@ -122,7 +124,7 @@ export async function reverseJournalEntry(payload) {
 }
 
 export async function postInvoiceJournal(invoice, user) {
-  const total = round(invoice.total);
+  const total = round(getStoredInvoiceNprTotal(invoice));
   if (total <= 0) return null;
   const partyName = invoice.billTo?.name || "";
   return replaceJournalEntry({
@@ -131,7 +133,7 @@ export async function postInvoiceJournal(invoice, user) {
     sourceId: invoice._id,
     sourceNumber: invoice.invoiceNumber,
     memo: `Invoice ${invoice.invoiceNumber || ""}`.trim(),
-    currency: invoice.currency || "Rs.",
+    currency: "NPR",
     lines: [
       line(ACCOUNTS.AR, { debit: total, partyId: invoice.customerId, partyName, bookingId: invoice.bookingId }),
       line(ACCOUNTS.REVENUE, { credit: total, partyId: invoice.customerId, partyName, bookingId: invoice.bookingId }),
@@ -141,7 +143,12 @@ export async function postInvoiceJournal(invoice, user) {
 }
 
 export async function postCustomerPaymentJournal(payment, user) {
-  const amount = round(payment.amount);
+  const invoice = payment.invoiceId
+    ? await Invoice.findById(payment.invoiceId).lean()
+    : await Invoice.findOne({ invoiceNumber: String(payment.invoiceNumber || "").toUpperCase() }).lean();
+  const amount = round(invoice
+    ? convertAmountToNpr(payment.amount, getStoredInvoiceNprRate(invoice))
+    : payment.amount);
   if (amount <= 0 || payment.status === "void") return null;
   const partyName = payment.customer?.name || "";
   return replaceJournalEntry({
@@ -150,7 +157,7 @@ export async function postCustomerPaymentJournal(payment, user) {
     sourceId: payment._id,
     sourceNumber: payment.paymentNumber || payment.referenceCode,
     memo: `Customer payment ${payment.paymentNumber || ""}`.trim(),
-    currency: "Rs.",
+    currency: "NPR",
     lines: [
       line(ACCOUNTS.CASH, { debit: amount, partyId: payment.customerId, partyName, bookingId: payment.bookingId }),
       line(ACCOUNTS.AR, { credit: amount, partyId: payment.customerId, partyName, bookingId: payment.bookingId }),

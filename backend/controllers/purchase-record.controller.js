@@ -555,7 +555,19 @@ export const updateTransactionAttachment = async (req, res) => {
     }
 
     if (attachment !== undefined) transaction.attachment = cleanAttachment(attachment);
-    if (taxAmount !== undefined) transaction.taxAmount = Number(taxAmount) || 0;
+    if (taxAmount !== undefined) {
+      const nextTax = Math.max(0, Number(taxAmount) || 0);
+      const lineSubtotal = (transaction.lineItems || []).reduce(
+        (sum, line) => sum + (Number(line.amount) || 0),
+        0,
+      );
+      const previousTax = Number(transaction.taxAmount) || 0;
+      const subtotal = transaction.lineItems?.length
+        ? lineSubtotal
+        : Math.max(0, (Number(transaction.amount) || 0) - previousTax);
+      transaction.taxAmount = nextTax;
+      transaction.amount = Math.round((subtotal + nextTax) * 100) / 100;
+    }
     await record.save();
 
     return res.status(200).json({

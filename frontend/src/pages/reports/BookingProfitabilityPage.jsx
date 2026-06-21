@@ -6,7 +6,7 @@ import { useBookingProfitability } from "../../hooks/useApiQueries";
 import { notifyError } from "../../utils/helpers";
 import { downloadCsv } from "../../utils/csvExport";
 
-const money = (value, currency = "Rs.") => `${currency} ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (value, currency = "NPR") => `${currency} ${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function SummaryCard({ label, value, tone = "text-slate-800", suffix = "" }) {
   return (
@@ -82,7 +82,7 @@ export default function BookingProfitabilityPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Booking Profitability</h1>
-          <p className="page-subtitle">Revenue, direct vendor cost, gross profit, and margin per booking</p>
+          <p className="page-subtitle">Revenue, direct vendor cost, gross profit, and margin per booking in NPR</p>
         </div>
         <div className="flex gap-2">
           <button onClick={exportReport} className="btn-secondary" disabled={rows.length === 0}>

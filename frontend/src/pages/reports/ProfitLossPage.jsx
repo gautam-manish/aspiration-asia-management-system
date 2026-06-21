@@ -4,7 +4,7 @@ import { useProfitLoss } from "../../hooks/useApiQueries";
 import { notifyError } from "../../utils/helpers";
 import { downloadCsv } from "../../utils/csvExport";
 
-const money = (value) => "Rs. " + Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (value) => "NPR " + Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function SummaryCard({ label, value, tone = "text-slate-800", suffix = "" }) {
   return <div className="card card-body !py-4"><p className="text-xs text-slate-500 mb-1">{label}</p><p className={`text-xl font-bold ${tone}`}>{value}{suffix}</p></div>;
@@ -34,7 +34,7 @@ export default function ProfitLossPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Profit & Loss</h1>
-          <p className="page-subtitle">Revenue, direct costs, operating expenses, and net profit</p>
+          <p className="page-subtitle">Revenue, direct costs, operating expenses, and net profit in NPR</p>
         </div>
         <div className="flex gap-2">
           <button onClick={exportMonthly} className="btn-secondary" disabled={months.length === 0}><i className="fa fa-download" /> Export CSV</button>

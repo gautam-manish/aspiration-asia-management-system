@@ -7,6 +7,7 @@ import { PageLoader, Field } from "../../components/common";
 import { useSalesRecord } from "../../hooks/useApiQueries";
 import { SlipField } from "./SalesRecordsPage";
 import { ReceiptPrint } from "../cashReceipts/CashReceiptDetailPage";
+import { CashReceiptModal } from "../cashReceipts/CashReceiptsPage";
 import toast from "react-hot-toast";
 
 const fmt = (n) => "Rs. " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -29,6 +30,7 @@ export default function SalesRecordDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [addingEntry, setAddingEntry] = useState(false);
+  const [receiptDraft, setReceiptDraft] = useState(null);
   const [receiptToPrint, setReceiptToPrint] = useState(null);
   const [form,    setForm]    = useState({});
   const [entries, setEntries] = useState([]);
@@ -86,9 +88,12 @@ export default function SalesRecordDetailPage() {
     bank: "",
     paymentType: `Invoice ${record.invoiceNumber}`,
     invoiceNumber: record.invoiceNumber,
+    bookingId: record.bookingId || "",
     email: record.email || "",
     phone: record.phone || "",
     address: record.address || "",
+    paymentMethod: "bank",
+    bankAccountId: "",
   });
 
   const printReceipt = (receipt) => {
@@ -240,7 +245,7 @@ export default function SalesRecordDetailPage() {
                     <td>
                       <button
                         type="button"
-                        onClick={() => printReceipt(buildReceiptFromEntry(e, i))}
+                        onClick={() => setReceiptDraft(buildReceiptFromEntry(e, i))}
                         disabled={!Number(e.amount)}
                         className="btn-secondary text-xs py-1 px-2"
                         title="Generate printable cash receipt for this payment entry"
@@ -337,6 +342,20 @@ export default function SalesRecordDetailPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {receiptDraft && (
+        <CashReceiptModal
+          initialValues={receiptDraft}
+          title="Generate Cash Receipt"
+          submitLabel="Generate PDF"
+          loadingLabel="Preparing..."
+          onClose={() => setReceiptDraft(null)}
+          onSubmit={(values) => {
+            setReceiptDraft(null);
+            printReceipt(values);
+          }}
+        />
       )}
 
       <div style={{ position: "absolute", left: -9999, top: 0, visibility: "hidden" }}>

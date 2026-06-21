@@ -112,7 +112,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       subtotal: 0, discountType: "none", discountValue: 0, discount: 0,
       taxApplicable: false, taxPercent: 0, taxAmount: 0, totalWithTax: 0,
       total: 0,
-      currency: "Rs.", notes: "", terms: "",
+      currency: "₹", notes: "", terms: "",
     };
   };
 
@@ -211,7 +211,7 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
       ? round2((taxBase * (Number(f.taxPercent) || 0)) / 100)
       : 0;
     const totalWithTax = round2(taxBase + taxAmount);
-    // Total Due is now the final figure including VAT/GST.
+    // Total Due is the final figure including VAT/GST.
     const total = totalWithTax;
     return { ...f, subtotal, discount, taxAmount, totalWithTax, total };
   };
@@ -235,7 +235,6 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
         ...form,
         paymentTermsDays: 0,
         dueDate: form.invoiceDate,
-        terms: "",
       };
       let saved;
       if (isEdit) {
@@ -282,6 +281,8 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
                   className="input"
                   value={form.currency}
                   onChange={(e) => setForm((f) => recalc({ ...f, currency: e.target.value }))}
+                  disabled={isEdit}
+                  title={isEdit ? "Currency is locked after invoice creation" : "Invoice currency"}
                   required
                 >
                   <option value="$">USD ($)</option>
@@ -509,6 +510,9 @@ export function InvoiceModal({ invoice, onClose, onSaved }) {
               <Field label="Notes">
                 <textarea className="input" rows={2} value={form.notes} onChange={(e) => setField("notes", e.target.value)} placeholder="Thank you for your business!" />
               </Field>
+              <Field label="Terms & Conditions">
+                <textarea className="input" rows={2} value={form.terms} onChange={(e) => setField("terms", e.target.value)} placeholder="Payment and service terms" />
+              </Field>
             </div>
           </div>
           <div className="modal-footer">
@@ -600,17 +604,14 @@ export default function InvoicesPage() {
             <div className="table-wrapper">
               <table className="table">
                 <thead><tr>
-                  <th>Invoice #</th><th>Booking ID</th><th>Invoice / Due</th><th>Bill To</th><th>Total</th><th>Status</th><th>Actions</th>
+                  <th>Invoice #</th><th>Booking ID</th><th>Invoice Date</th><th>Bill To</th><th>Total</th><th>Status</th><th>Actions</th>
                 </tr></thead>
                 <tbody>
                   {list.map((inv) => (
                     <tr key={inv._id}>
                       <td className="font-mono text-xs text-brand-600 font-medium">{inv.invoiceNumber}</td>
                       <td className="font-mono text-xs text-slate-600">{inv.bookingId || "—"}</td>
-                      <td className="text-xs text-slate-500">
-                        <p>{inv.invoiceDate}</p>
-                        <p className="text-slate-400">Due {inv.dueDate || inv.invoiceDate}</p>
-                      </td>
+                      <td className="text-xs text-slate-500">{inv.invoiceDate}</td>
                       <td>
                         <p className="font-medium text-slate-800">{inv.billTo?.name}</p>
                         <p className="text-xs text-slate-400">{inv.billTo?.email}</p>

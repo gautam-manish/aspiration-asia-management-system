@@ -17,6 +17,14 @@ api.interceptors.request.use((config) => {
 // Response interceptor — handle session expiry without breaking page state
 let isRedirecting = false;
 
+export const AUTH_SESSION_EXPIRED_EVENT = "auth:session-expired";
+
+const expireSession = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED_EVENT));
+};
+
 const tokenFromHeader = (value) => {
   const match = String(value || "").match(/^Bearer\s+(.+)$/i);
   return match ? match[1] : "";
@@ -45,8 +53,7 @@ api.interceptors.response.use(
       // Avoid redirect loops if multiple 401s land at once
       if (!isRedirecting) {
         isRedirecting = true;
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+        expireSession();
         // Don't hard-redirect here — AuthContext.verify() clears session state,
         // which triggers ProtectedRoute to SPA-navigate to /login cleanly.
       }

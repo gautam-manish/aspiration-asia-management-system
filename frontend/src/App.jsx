@@ -14,8 +14,6 @@ const VouchersPage = lazy(() => import("./pages/vouchers/VouchersPage"));
 const VoucherDetailPage = lazy(() => import("./pages/vouchers/VoucherDetailPage"));
 const InvoicesPage = lazy(() => import("./pages/invoices/InvoicesPage"));
 const InvoiceDetailPage = lazy(() => import("./pages/invoices/InvoiceDetailPage"));
-const CashReceiptsPage = lazy(() => import("./pages/cashReceipts/CashReceiptsPage"));
-const CashReceiptDetailPage = lazy(() => import("./pages/cashReceipts/CashReceiptDetailPage"));
 const CustomerPaymentsPage = lazy(() => import("./pages/customerPayments/CustomerPaymentsPage"));
 const CustomerPaymentDetailPage = lazy(() => import("./pages/customerPayments/CustomerPaymentDetailPage"));
 const ArAgingPage = lazy(() => import("./pages/reports/ArAgingPage"));
@@ -66,8 +64,6 @@ export default function App() {
         <Route path="/vouchers/:id"              element={<P><VoucherDetailPage /></P>} />
         <Route path="/invoices"                  element={<P><InvoicesPage /></P>} />
         <Route path="/invoices/:id"              element={<P><InvoiceDetailPage /></P>} />
-        <Route path="/cash-receipts"             element={<P><CashReceiptsPage /></P>} />
-        <Route path="/cash-receipts/:id"         element={<P><CashReceiptDetailPage /></P>} />
         <Route path="/customer-payments"         element={<P><CustomerPaymentsPage /></P>} />
         <Route path="/customer-payments/:id"     element={<P><CustomerPaymentDetailPage /></P>} />
         <Route path="/ar-aging"                  element={<P><ArAgingPage /></P>} />

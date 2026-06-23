@@ -8,9 +8,9 @@ const NAV_GROUPS = [
   {
     label: "Operations",
     items: [
+      { to: "/",                  icon: "fa-plane-arrival",  label: "Upcoming Arrivals", roles: ["admin", "sales", "operations"] },
       { to: "/hotels",             icon: "fa-hotel",          label: "Hotels", roles: ["admin", "sales", "operations"] },
       { to: "/bookings",          icon: "fa-bookmark",       label: "Bookings", roles: ["admin", "sales", "operations"] },
-      { to: "/",                  icon: "fa-plane-arrival",  label: "Upcoming Arrivals", roles: ["admin", "sales", "operations"] },
       { to: "/reservations",      icon: "fa-calendar-check", label: "Reservations", roles: ["admin", "sales", "operations"] },
       { to: "/vouchers",          icon: "fa-ticket-alt",     label: "Vouchers", roles: ["admin", "sales", "operations"] },
       { to: "/package-cost",      icon: "fa-box-open",       label: "Package Cost", roles: ["admin", "sales", "operations"] },
@@ -20,25 +20,32 @@ const NAV_GROUPS = [
     label: "Finance",
     items: [
       { to: "/invoices",         icon: "fa-file-invoice",   label: "Invoices", roles: ["admin", "sales", "accountant"] },
+      { to: "/sales-records",    icon: "fa-chart-line",     label: "Sales Records", roles: ["admin", "accountant"] },
       { to: "/customer-payments", icon: "fa-money-bill-wave", label: "Customer Payments", roles: ["admin", "accountant"] },
-      { to: "/ar-aging",        icon: "fa-clock",          label: "AR Aging", roles: ["admin", "accountant"] },
-      { to: "/vendor-bills",    icon: "fa-file-invoice-dollar", label: "Vendor Costs", roles: ["admin", "accountant"] },
-      { to: "/vendor-payments", icon: "fa-money-check-alt", label: "Vendor Payments", roles: ["admin", "accountant"] },
-      { to: "/vendors",         icon: "fa-truck",          label: "Vendors", roles: ["admin", "accountant"] },
-      { to: "/ap-aging",        icon: "fa-business-time",  label: "AP Aging", roles: ["admin", "accountant"] },
-      { to: "/booking-profitability", icon: "fa-chart-pie", label: "Profitability", roles: ["admin", "accountant"] },
-      { to: "/booking-stats", icon: "fa-chart-bar", label: "Booking Stats", roles: ["admin", "accountant"] },
       { to: "/customer-ledger", icon: "fa-book-open",      label: "Customer Ledger", roles: ["admin", "accountant"] },
+      // { to: "/vendor-bills",    icon: "fa-file-invoice-dollar", label: "Vendor Costs", roles: ["admin", "accountant"] },
+      // { to: "/vendor-payments", icon: "fa-money-check-alt", label: "Vendor Payments", roles: ["admin", "accountant"] },
+      { to: "/purchase-records", icon: "fa-book",           label: "Purchase Records", roles: ["admin", "accountant"] },
+      { to: "/vendors",         icon: "fa-truck",          label: "Vendors", roles: ["admin", "accountant"] },
       { to: "/vendor-ledger",   icon: "fa-book-reader",    label: "Vendor Ledger", roles: ["admin", "accountant"] },
       { to: "/office-expenses", icon: "fa-wallet",         label: "Office Expenses", roles: ["admin", "accountant"] },
-      { to: "/profit-loss",     icon: "fa-balance-scale",  label: "Profit & Loss", roles: ["admin", "accountant"] },
-      { to: "/accounting-reconciliation", icon: "fa-clipboard-check", label: "Reconciliation", roles: ["admin", "accountant"] },
-      { to: "/journal-entries", icon: "fa-book",           label: "Journal Entries", roles: ["admin", "accountant"] },
-      { to: "/cash-receipts",    icon: "fa-receipt",        label: "Cash Receipts", roles: ["admin", "accountant"] },
-      { to: "/sales-records",    icon: "fa-chart-line",     label: "Sales Records", roles: ["admin", "accountant"] },
-      { to: "/purchase-records", icon: "fa-book",           label: "Purchase Records", roles: ["admin", "accountant"] },
+      { to: "/booking-stats", icon: "fa-chart-bar", label: "Booking Stats", roles: ["admin", "accountant"] },
       { to: "/bank-accounts",    icon: "fa-university",     label: "Bank Accounts", roles: ["admin", "accountant"] },
       { to: "/calculator",       icon: "fa-calculator",     label: "Calculator", roles: ["admin", "sales", "operations", "accountant"] },
+      {
+      id: "stats",
+        icon: "fa-chart-area",
+        label: "Stats",
+        roles: ["admin", "accountant"],
+        children: [
+          { to: "/ar-aging", icon: "fa-clock", label: "AR Aging", roles: ["admin", "accountant"] },
+          { to: "/ap-aging", icon: "fa-business-time", label: "AP Aging", roles: ["admin", "accountant"] },
+          { to: "/booking-profitability", icon: "fa-chart-pie", label: "Profitability", roles: ["admin", "accountant"] },
+          { to: "/profit-loss", icon: "fa-balance-scale", label: "Profit & Loss", roles: ["admin", "accountant"] },
+          { to: "/accounting-reconciliation", icon: "fa-clipboard-check", label: "Reconciliation", roles: ["admin", "accountant"] },
+          { to: "/journal-entries", icon: "fa-book", label: "Journal Entries", roles: ["admin", "accountant"] },
+        ],
+      },
     ],
   },
   {
@@ -61,12 +68,26 @@ export default function Layout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [openSubmenus, setOpenSubmenus] = useState({});
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   // Close the mobile drawer whenever the user navigates.
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
+  useEffect(() => {
+    const activeParents = NAV_GROUPS.flatMap((group) => group.items)
+      .filter((item) => item.children?.some((child) => (
+        location.pathname === child.to || location.pathname.startsWith(`${child.to}/`)
+      )));
+    if (activeParents.length) {
+      setOpenSubmenus((current) => activeParents.reduce(
+        (next, item) => ({ ...next, [item.id]: true }),
+        current,
+      ));
+    }
+  }, [location.pathname]);
 
   const handleLogout = () => {
     setConfirmLogout(false);
@@ -84,6 +105,15 @@ export default function Layout({ children }) {
     : "-translate-x-full lg:translate-x-0";
   const userRole = user?.role || "";
   const canSee = (item) => !item.roles || item.roles.includes(userRole);
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items
+      .filter(canSee)
+      .map((item) => item.children
+        ? { ...item, children: item.children.filter(canSee) }
+        : item)
+      .filter((item) => !item.children || item.children.length > 0),
+  })).filter((group) => group.items.length > 0);
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -152,9 +182,7 @@ export default function Layout({ children }) {
 
         {/* Nav */}
         <nav className="flex-1 py-3 overflow-y-auto">
-          {NAV_GROUPS.map((group) => ({ ...group, items: group.items.filter(canSee) }))
-            .filter((group) => group.items.length > 0)
-            .map((group) => (
+          {visibleGroups.map((group) => (
             <div key={group.label} className="mb-1">
               {!collapsed && (
                 <p className="px-4 pt-3 pb-1 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
@@ -163,24 +191,82 @@ export default function Layout({ children }) {
               )}
               {collapsed && <div className="my-1 mx-3 border-t border-slate-100" />}
 
-              {group.items.map(({ to, icon, label }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={to === "/"}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                      isActive
-                        ? "bg-brand-50 text-brand-700"
-                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
-                    }`
-                  }
-                  title={collapsed ? label : undefined}
-                >
-                  <i className={`fa ${icon} w-4 text-center flex-shrink-0 text-sm`} />
-                  {!collapsed && <span className="truncate">{label}</span>}
-                </NavLink>
-              ))}
+              {group.items.map((item) => {
+                if (!item.children) {
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.to === "/"}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                          isActive
+                            ? "bg-brand-50 text-brand-700"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+                        }`
+                      }
+                      title={collapsed ? item.label : undefined}
+                    >
+                      <i className={`fa ${item.icon} w-4 text-center flex-shrink-0 text-sm`} />
+                      {!collapsed && <span className="truncate">{item.label}</span>}
+                    </NavLink>
+                  );
+                }
+
+                const active = item.children.some((child) => (
+                  location.pathname === child.to || location.pathname.startsWith(`${child.to}/`)
+                ));
+                const open = !!openSubmenus[item.id];
+                return (
+                  <div key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (collapsed) setCollapsed(false);
+                        setOpenSubmenus((current) => ({
+                          ...current,
+                          [item.id]: collapsed ? true : !current[item.id],
+                        }));
+                      }}
+                      className={`w-[calc(100%-1rem)] flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                        active
+                          ? "bg-brand-50 text-brand-700"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+                      }`}
+                      title={collapsed ? item.label : undefined}
+                      aria-expanded={open}
+                    >
+                      <i className={`fa ${item.icon} w-4 text-center flex-shrink-0 text-sm`} />
+                      {!collapsed && (
+                        <>
+                          <span className="truncate flex-1 text-left">{item.label}</span>
+                          <i className={`fa fa-chevron-${open ? "up" : "down"} text-[10px] text-slate-400`} />
+                        </>
+                      )}
+                    </button>
+                    {!collapsed && open && (
+                      <div className="ml-6 mr-2 border-l border-slate-200 pl-2 py-1">
+                        {item.children.map((child) => (
+                          <NavLink
+                            key={child.to}
+                            to={child.to}
+                            className={({ isActive }) =>
+                              `flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                                isActive
+                                  ? "bg-brand-50 text-brand-700"
+                                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                              }`
+                            }
+                          >
+                            <i className={`fa ${child.icon} w-3.5 text-center flex-shrink-0 text-xs`} />
+                            <span className="truncate">{child.label}</span>
+                          </NavLink>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </nav>

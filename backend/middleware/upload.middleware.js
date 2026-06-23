@@ -15,10 +15,13 @@ import multer from "multer";
 import path   from "path";
 import fs     from "fs";
 import crypto from "crypto";
+import { fileURLToPath } from "url";
+
+const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const UPLOAD_BASE = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
-  : path.resolve("uploads");
+  : path.join(backendRoot, "uploads");
 
 // Where payment-slip files live specifically.
 const UPLOAD_ROOT = path.join(UPLOAD_BASE, "payment-slips");

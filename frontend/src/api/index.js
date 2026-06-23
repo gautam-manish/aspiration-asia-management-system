@@ -7,15 +7,19 @@ export const resolveUploadUrl = (url) => {
     return value;
   }
 
+  // Production reliably proxies /api to the backend, while some deployments
+  // do not expose the backend's root-level /uploads route.
+  const publicPath = value.startsWith("/uploads/") ? `/api${value}` : value;
+
   const configuredOrigin = String(import.meta.env.VITE_UPLOAD_ORIGIN || import.meta.env.VITE_API_ORIGIN || "").trim();
   const isLocalFrontend = typeof window !== "undefined" && ["3000", "4173", "5173"].includes(window.location.port);
   const uploadOrigin = configuredOrigin || (isLocalFrontend ? `${window.location.protocol}//${window.location.hostname}:5000` : "");
-  if (!uploadOrigin) return value;
+  if (!uploadOrigin) return publicPath;
 
   try {
-    return new URL(value, uploadOrigin.endsWith("/") ? uploadOrigin : `${uploadOrigin}/`).toString();
+    return new URL(publicPath, uploadOrigin.endsWith("/") ? uploadOrigin : `${uploadOrigin}/`).toString();
   } catch {
-    return value;
+    return publicPath;
   }
 };
 

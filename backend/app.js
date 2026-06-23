@@ -86,11 +86,21 @@ app.use(express.json({ limit: "1mb" }));
 
 // ── Static uploads ───────────────────────────────────────────────────────────
 // Files are streamed from disk by the OS (low memory footprint).
+// Both historical default locations remain readable because older deployments
+// resolved ./uploads from the process working directory.
 // We serve from UPLOAD_BASE — same dir multer writes to, configurable via UPLOAD_DIR.
-app.use("/uploads", express.static(UPLOAD_BASE));
-const legacyUploadBase = path.join(__dirname, "uploads");
-if (path.resolve(legacyUploadBase) !== path.resolve(UPLOAD_BASE)) {
-  app.use("/uploads", express.static(legacyUploadBase));
+const uploadBases = [
+  UPLOAD_BASE,
+  path.join(__dirname, "uploads"),
+  path.join(__dirname, "..", "uploads"),
+];
+const mountedUploadBases = new Set();
+for (const uploadBase of uploadBases) {
+  const resolvedUploadBase = path.resolve(uploadBase);
+  if (mountedUploadBases.has(resolvedUploadBase)) continue;
+  mountedUploadBases.add(resolvedUploadBase);
+  app.use("/uploads", express.static(resolvedUploadBase));
+  app.use("/api/uploads", express.static(resolvedUploadBase));
 }
 
 // ── Health check (used by load balancers / uptime monitors) ──────────────────

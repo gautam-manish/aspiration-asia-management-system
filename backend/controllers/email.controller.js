@@ -1,6 +1,25 @@
 import nodemailer from "nodemailer";
 
-const safe = (v) => (v === undefined || v === null || v === "") ? "" : String(v);
+const safe = (v) => {
+  if (v === undefined || v === null || v === "") return "";
+  return String(v).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[character]);
+};
+
+const mailFailure = (error) => {
+  if (error?.code === "EAUTH" || error?.responseCode === 535) {
+    return { status: 502, message: "Gmail rejected the sender credentials. Generate a new App Password and restart the backend." };
+  }
+  if (!MAIL_USER || !MAIL_PASS) {
+    return { status: 503, message: "Email service is not configured. Add MAIL_USER and MAIL_PASS on the server." };
+  }
+  return { status: 502, message: "The email provider could not deliver the message. Check the backend mail logs." };
+};
 
 // ── Shared Transporter ───────────────────────
 // Credentials must be supplied via environment variables. NEVER commit them.
@@ -33,6 +52,18 @@ export const sendPackageMail = async (req, res) => {
     const costs = req.body.costs || {};
     const accommodation = req.body.accommodation || [];
     const total = req.body.total || 0;
+    const clientEmail = String(clientDetails.email || "").trim();
+    const arrival = new Date(clientDetails.arrivalDate);
+    const departure = new Date(clientDetails.departureDate);
+    const numberOfDays = Number.isNaN(arrival.getTime()) || Number.isNaN(departure.getTime())
+      ? ""
+      : Math.max(0, Math.ceil((departure - arrival) / 86400000));
+    const children = [clientDetails.childEB, clientDetails.childNoEB, clientDetails.childU5]
+      .reduce((sum, value) => sum + (Number(value) || 0), 0);
+
+    if (!clientEmail) {
+      return res.status(400).json({ success: false, message: "Client email is required", data: null });
+    }
 
     const html = `
 <div style="font-family:Arial;background:#f4f6f8;padding:20px;">
@@ -50,17 +81,15 @@ export const sendPackageMail = async (req, res) => {
 
     <h2 style="color:#111;margin-top:30px;">Client Details</h2>
     <table style="width:100%;border-collapse:collapse;">
-      <tr><td style="border:1px solid #ddd;padding:8px;">Client Name</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.clientName)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Contact</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.contact)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Client Name</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.name || clientDetails.clientName)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Nationality</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.nationality)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Contact</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.mobile || clientDetails.contact)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Email</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientEmail)}</td></tr>
       <tr><td style="border:1px solid #ddd;padding:8px;">Arrival Date</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.arrivalDate)}</td></tr>
       <tr><td style="border:1px solid #ddd;padding:8px;">Departure Date</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.departureDate)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Arrival Destination</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.arrivalDestination)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Departure Destination</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.departureDestination)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">No. of Days</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.numberOfDays)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Adults</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.numberOfAdults)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Children</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.numberOfChildren)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Meal Plan</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.mealPlan)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Hotel Category</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.hotelCategory)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">No. of Nights</td><td style="border:1px solid #ddd;padding:8px;">${safe(numberOfDays)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Adults</td><td style="border:1px solid #ddd;padding:8px;">${safe(clientDetails.adults)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Children</td><td style="border:1px solid #ddd;padding:8px;">${safe(children)}</td></tr>
     </table>
 
     <h2 style="color:#111;margin-top:30px;">Accommodation Details</h2>
@@ -74,9 +103,9 @@ export const sendPackageMail = async (req, res) => {
       </tr>
       ${accommodation.map(a => `
       <tr>
-        <td style="border:1px solid #ddd;padding:8px;">${safe(a.hotel)}</td>
-        <td style="border:1px solid #ddd;padding:8px;">${safe(a.meal)}</td>
-        <td style="border:1px solid #ddd;padding:8px;">${safe(a.cost)}</td>
+        <td style="border:1px solid #ddd;padding:8px;">${safe(a.hotelName || a.hotel)}</td>
+        <td style="border:1px solid #ddd;padding:8px;">${safe(a.mealPlan || a.meal)}</td>
+        <td style="border:1px solid #ddd;padding:8px;">${safe(a.ratePerRoom ?? a.cost)}</td>
         <td style="border:1px solid #ddd;padding:8px;">${safe(a.nights)}</td>
         <td style="border:1px solid #ddd;padding:8px;">${safe(a.total)}</td>
       </tr>`).join("")}
@@ -84,19 +113,14 @@ export const sendPackageMail = async (req, res) => {
 
     <h2 style="color:#111;margin-top:30px;">Cost Breakdown</h2>
     <table style="width:100%;border-collapse:collapse;">
-      <tr><td style="border:1px solid #ddd;padding:8px;">Vehicle</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.vehicle)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Flight</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.flight)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Lunch</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.lunch)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Entry Fee</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.entryFee)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Airport Pickup</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.transferPickup)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Airport Drop</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.transferDrop)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Domestic Flight</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.flightDomestic)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Permit</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.permit)}</td></tr>
       <tr><td style="border:1px solid #ddd;padding:8px;">Guide</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.guide)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Extra Services</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.extraServices)}</td></tr>
-      <tr><td style="border:1px solid #ddd;padding:8px;">Miscellaneous</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.miscellaneous)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Porter</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.porter)}</td></tr>
+      <tr><td style="border:1px solid #ddd;padding:8px;">Other Services</td><td style="border:1px solid #ddd;padding:8px;">${safe(costs.otherServices)}</td></tr>
     </table>
-
-    <div style="display:flex;align-items:center;">
-      <h2 style="color:#111;margin-top:30px;">Profit:</h2>
-      <p style="margin-top:30px;margin-left:10px;font-size:19px;font-weight:bold;color:#16a34a;">Rs. ${safe(costs.profit)}</p>
-    </div>
 
     <div style="margin-top:30px;text-align:center;">
       <h2 style="background:#16a34a;color:white;padding:15px;border-radius:10px;">
@@ -109,7 +133,8 @@ export const sendPackageMail = async (req, res) => {
 
     await getTransporter().sendMail({
       from: MAIL_USER,
-      to: PACKAGE_TO,
+      to: clientEmail,
+      bcc: PACKAGE_TO && PACKAGE_TO.toLowerCase() !== clientEmail.toLowerCase() ? PACKAGE_TO : undefined,
       subject: "Package Cost",
       html,
     });
@@ -117,7 +142,8 @@ export const sendPackageMail = async (req, res) => {
     res.status(200).json({ success: true, message: "Mail sent successfully" });
   } catch (error) {
     console.error("[mail] sendPackageMail error:", error);
-    res.status(500).json({ success: false, message: "Error sending mail. Check server email configuration." });
+    const failure = mailFailure(error);
+    res.status(failure.status).json({ success: false, message: failure.message, data: null });
   }
 };
 

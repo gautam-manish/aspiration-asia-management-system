@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react";
-import { hotelAPI } from "../../api";
+import { useState } from "react";
+import { emailAPI } from "../../api";
 import { notifyError } from "../../utils/helpers";
 import { Field } from "../../components/common";
 import { useHotels } from "../../hooks/useApiQueries";
 import toast from "react-hot-toast";
-import axios from "axios";
 
 const MEAL_PLANS = ["EP", "CP", "MAP", "AP", "JP"];
 const today = () => new Date().toISOString().split("T")[0];
@@ -87,12 +86,13 @@ export default function PackageCostPage() {
     if (!client.email.trim()) { toast.error("Client email is required to send"); return; }
     setSending(true);
     try {
-      const token = localStorage.getItem("token");
-      await axios.post(
-        "/api/mail/send-mail",
-        { agency, clientDetails: client, costs, accommodation: rows, total: grandTotal },
-        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
-      );
+      await emailAPI.sendPackageMail({
+        agency,
+        clientDetails: client,
+        costs,
+        accommodation: rows,
+        total: grandTotal,
+      });
       toast.success("Email sent ✓");
     } catch (err) {
       notifyError(err);

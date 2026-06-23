@@ -34,6 +34,12 @@ const reservationSchema = new mongoose.Schema(
     note:      { type: String, trim: true },
     emailTo:   [{ type: String }],
     subject:   { type: String, trim: true },
+    emailStatus: {
+      type: String,
+      enum: ["pending", "sent", "failed", "not_configured"],
+      default: "pending",
+    },
+    emailError: { type: String, trim: true, default: "" },
   },
   { timestamps: true }
 );

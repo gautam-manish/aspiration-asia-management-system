@@ -62,6 +62,7 @@ export const reservationAPI = {
   getById: (id)       => api.get(`/reservations/${id}`),
   create:  (data)     => api.post("/reservations", data),
   update:  (id, data) => api.put(`/reservations/${id}`, data),
+  sendMail: (id)      => api.post(`/reservations/${id}/send-email`),
 };
 
 // ── Vouchers ────────────────────────────────────────────────────────

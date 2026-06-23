@@ -20,7 +20,53 @@ function getTransporter() {
   return transporter;
 }
 
-const safe = (v) => (v === undefined || v === null || v === "") ? "" : String(v);
+const safe = (v) => {
+  if (v === undefined || v === null || v === "") return "";
+  return String(v).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[character]);
+};
+
+const reservationEmailHtml = (reservation) => {
+  const pax = reservation.pax || {};
+  const room = reservation.room || {};
+  const visits = reservation.visits || {};
+  const row = (label, value) => `
+    <tr>
+      <td style="border:1px solid #ddd;padding:8px;font-weight:600;width:42%;">${safe(label)}</td>
+      <td style="border:1px solid #ddd;padding:8px;">${safe(value) || "-"}</td>
+    </tr>`;
+
+  return `
+    <div style="font-family:Arial;background:#f4f6f8;padding:20px;">
+      <div style="max-width:800px;margin:auto;background:white;padding:25px;border-radius:12px;">
+        <h1 style="text-align:center;color:#2563eb;margin-bottom:5px;">Hotel Reservation</h1>
+        <p style="text-align:center;color:#666;margin-bottom:20px;">Reservation Details</p>
+        <table style="width:100%;border-collapse:collapse;">
+          ${row("Booking Name", reservation.bookingName)}
+          ${row("Nationality", reservation.nationality)}
+          ${row("Adults", pax.adults)}
+          ${row("Child with Bed", pax.childWithBed)}
+          ${row("Child without Bed", pax.childWithoutBed)}
+          ${row("Child below 5 yrs", pax.childBelow5)}
+          ${row("Room Category", room.category)}
+          ${row("No. of Rooms", room.noOfRooms)}
+          ${row("Room Type", room.type)}
+          ${row("Extra Bed", room.extraBed)}
+          ${row("Meal Plan", room.mealPlan)}
+          ${row("1st Visit Check-In", visits.visit1in)}
+          ${row("1st Visit Check-Out", visits.visit1out)}
+          ${row("2nd Visit Check-In", visits.visit2in)}
+          ${row("2nd Visit Check-Out", visits.visit2out)}
+          ${row("Note", reservation.note)}
+        </table>
+      </div>
+    </div>`;
+};
 
 // ─────────────────────────────────────────
 // @desc    Create Reservation + Send Email
@@ -29,15 +75,21 @@ const safe = (v) => (v === undefined || v === null || v === "") ? "" : String(v)
 export const createReservation = async (req, res) => {
   try {
     const { to, subject, bookingName, nationality, pax, room, visits, note } = req.body;
+    const recipients = (Array.isArray(to) ? to : [to])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
 
     if (!bookingName) {
       return res.status(400).json({ success: false, message: "Booking name is required", data: null });
+    }
+    if (recipients.length === 0) {
+      return res.status(400).json({ success: false, message: "At least one recipient email is required", data: null });
     }
 
     // Save to DB
     const reservation = await Reservation.create({
       bookingName, nationality, pax, room, visits, note,
-      emailTo: to, subject,
+      emailTo: recipients, subject,
     });
 
     // Send Email
@@ -89,17 +141,38 @@ export const createReservation = async (req, res) => {
   </div>
 </div>`;
 
-    await getTransporter().sendMail({
-      from: MAIL_USER,
-      to: Array.isArray(to) ? to.join(", ") : to,
-      subject: subject || "Hotel Reservation",
-      html,
-    });
+    let emailSent = false;
+    let warning = "";
+    try {
+      await getTransporter().sendMail({
+        from: MAIL_USER,
+        to: recipients.join(", "),
+        subject: subject || "Hotel Reservation",
+        html,
+      });
+      emailSent = true;
+      reservation.emailStatus = "sent";
+      reservation.emailError = "";
+    } catch (mailError) {
+      const notConfigured = !MAIL_USER || !MAIL_PASS;
+      warning = notConfigured
+        ? "Email service is not configured. Add MAIL_USER and MAIL_PASS on the server."
+        : "Email delivery failed. Check the server mail credentials and provider access.";
+      reservation.emailStatus = notConfigured ? "not_configured" : "failed";
+      reservation.emailError = warning;
+      console.error("createReservation email error:", mailError);
+    }
+
+    await reservation.save();
 
     res.status(201).json({
       success: true,
-      message: "Reservation saved and email sent successfully",
+      message: emailSent
+        ? "Reservation saved and email sent successfully"
+        : "Reservation saved, but the email was not sent",
       data: reservation,
+      emailSent,
+      warning,
     });
   } catch (error) {
     console.error("createReservation error:", error);
@@ -205,5 +278,53 @@ export const updateReservation = async (req, res) => {
   } catch (error) {
     console.error("updateReservation error:", error);
     res.status(400).json({ success: false, message: "Failed to update reservation.", data: null });
+  }
+};
+
+// @desc    Send or resend the saved reservation email
+// @route   POST /api/reservations/:id/send-email
+export const sendReservationEmail = async (req, res) => {
+  try {
+    const reservation = await Reservation.findById(req.params.id);
+    if (!reservation) {
+      return res.status(404).json({ success: false, message: "Reservation not found", data: null });
+    }
+
+    const recipients = (reservation.emailTo || [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    if (recipients.length === 0) {
+      return res.status(400).json({ success: false, message: "No recipient email is saved for this reservation", data: null });
+    }
+
+    try {
+      await getTransporter().sendMail({
+        from: MAIL_USER,
+        to: recipients.join(", "),
+        subject: reservation.subject || "Hotel Reservation",
+        html: reservationEmailHtml(reservation),
+      });
+      reservation.emailStatus = "sent";
+      reservation.emailError = "";
+      await reservation.save();
+      return res.status(200).json({
+        success: true,
+        message: "Reservation email sent successfully",
+        data: reservation,
+      });
+    } catch (mailError) {
+      const notConfigured = !MAIL_USER || !MAIL_PASS;
+      const message = notConfigured
+        ? "Email service is not configured. Add MAIL_USER and MAIL_PASS on the server."
+        : "Email delivery failed. Check the server mail credentials and provider access.";
+      reservation.emailStatus = notConfigured ? "not_configured" : "failed";
+      reservation.emailError = message;
+      await reservation.save();
+      console.error("sendReservationEmail error:", mailError);
+      return res.status(502).json({ success: false, message, data: reservation });
+    }
+  } catch (error) {
+    console.error("sendReservationEmail lookup error:", error);
+    return res.status(500).json({ success: false, message: "Failed to send reservation email.", data: null });
   }
 };

@@ -189,11 +189,8 @@ function VoucherModal({ onClose, onSaved }) {
             </div>
 
             {/* Hotels */}
-            <div className="flex items-center justify-between mt-2">
+            <div className="mt-2">
               <SectionTitle>Hotel Blocks</SectionTitle>
-              <button type="button" onClick={addHotel} className="btn-secondary text-xs py-1">
-                <i className="fa fa-plus" /> Add Hotel
-              </button>
             </div>
 
             {form.hotels.map((h, i) => (
@@ -288,6 +285,11 @@ function VoucherModal({ onClose, onSaved }) {
                 </div>
               </div>
             ))}
+            <div className="flex justify-end pt-1">
+              <button type="button" onClick={addHotel} className="btn-secondary text-xs">
+                <i className="fa fa-plus" /> Add Hotel
+              </button>
+            </div>
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

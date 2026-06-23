@@ -17,8 +17,24 @@ const EMPTY_FORM = {
   note: "",
 };
 
-function ReservationModal({ onClose, onSaved }) {
-  const [form, setForm] = useState(EMPTY_FORM);
+const reservationForm = (reservation) => reservation ? {
+  to: (Array.isArray(reservation.emailTo) ? reservation.emailTo : [reservation.emailTo]).filter(Boolean).join(", "),
+  subject: reservation.subject || "Hotel Reservation",
+  bookingName: reservation.bookingName || "",
+  nationality: reservation.nationality || "",
+  pax: { ...EMPTY_FORM.pax, ...(reservation.pax || {}) },
+  room: { ...EMPTY_FORM.room, ...(reservation.room || {}) },
+  visits: { ...EMPTY_FORM.visits, ...(reservation.visits || {}) },
+  note: reservation.note || "",
+} : {
+  ...EMPTY_FORM,
+  pax: { ...EMPTY_FORM.pax },
+  room: { ...EMPTY_FORM.room },
+  visits: { ...EMPTY_FORM.visits },
+};
+
+function ReservationModal({ reservation = null, onClose, onSaved }) {
+  const [form, setForm] = useState(() => reservationForm(reservation));
   const [loading, setLoading] = useState(false);
   const set   = (k, v)    => setForm((f) => ({ ...f, [k]: v }));
   const setPax = (k, v)   => setForm((f) => ({ ...f, pax: { ...f.pax, [k]: v } }));
@@ -29,10 +45,24 @@ function ReservationModal({ onClose, onSaved }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const payload = { ...form, to: form.to.split(",").map((s) => s.trim()).filter(Boolean) };
-      await reservationAPI.create(payload);
-      toast.success("Reservation created & email sent");
-      onSaved();
+      const recipients = form.to.split(",").map((s) => s.trim()).filter(Boolean);
+      if (reservation) {
+        const { data } = await reservationAPI.update(reservation._id, {
+          ...form,
+          emailTo: recipients,
+        });
+        toast.success("Reservation updated");
+        onSaved(data?.data);
+        return;
+      }
+
+      const { data } = await reservationAPI.create({ ...form, to: recipients });
+      if (data?.emailSent === false) {
+        toast(data.warning || "Reservation saved, but the email was not sent");
+      } else {
+        toast.success("Reservation created & email sent");
+      }
+      onSaved(data?.data);
     } catch (err) {
       notifyError(err);
     } finally {
@@ -44,7 +74,9 @@ function ReservationModal({ onClose, onSaved }) {
     <div className="modal-overlay">
       <div className="modal max-w-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="font-display font-semibold text-slate-800">New Hotel Reservation</h2>
+          <h2 className="font-display font-semibold text-slate-800">
+            {reservation ? "Edit Hotel Reservation" : "New Hotel Reservation"}
+          </h2>
           <button onClick={onClose} className="btn-ghost p-1 rounded-lg"><i className="fa fa-times" /></button>
         </div>
         <form onSubmit={handleSubmit}>
@@ -122,7 +154,11 @@ function ReservationModal({ onClose, onSaved }) {
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={loading} className="btn-primary">
-              {loading ? "Sending…" : <><i className="fa fa-paper-plane" /> Send & Save</>}
+              {loading
+                ? (reservation ? "Saving…" : "Sending…")
+                : reservation
+                  ? <><i className="fa fa-save" /> Save Changes</>
+                  : <><i className="fa fa-paper-plane" /> Send & Save</>}
             </button>
           </div>
         </form>
@@ -176,12 +212,105 @@ function PrintView({ reservation }) {
   );
 }
 
+function ReservationViewModal({ reservation, sending, onClose, onEdit, onPrint, onSendMail }) {
+  const Detail = ({ label, value }) => (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="mt-1 text-sm font-medium text-slate-700 break-all">
+        {value === undefined || value === null || value === "" ? "—" : value}
+      </p>
+    </div>
+  );
+  const statusLabel = {
+    sent: "Sent",
+    failed: "Failed",
+    not_configured: "Not configured",
+    pending: "Pending",
+  }[reservation.emailStatus] || "Not recorded";
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-3xl" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-header">
+          <div className="min-w-0">
+            <h2 className="font-display font-semibold text-slate-800 truncate">{reservation.bookingName}</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Created {formatDate(reservation.createdAt)}</p>
+          </div>
+          <button onClick={onClose} className="btn-ghost p-1 rounded-lg" aria-label="Close reservation">
+            <i className="fa fa-times" />
+          </button>
+        </div>
+
+        <div className="modal-body space-y-5">
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-4">
+            <button onClick={onEdit} className="btn-secondary">
+              <i className="fa fa-edit" /> Edit
+            </button>
+            <button onClick={onPrint} className="btn-secondary">
+              <i className="fa fa-print" /> Print
+            </button>
+            <button onClick={onSendMail} disabled={sending} className="btn-primary">
+              <i className={`fa ${sending ? "fa-spinner fa-spin" : "fa-envelope"}`} />
+              {sending ? "Sending…" : "Send Mail"}
+            </button>
+            <span className={`badge ml-auto ${reservation.emailStatus === "sent" ? "badge-green" : reservation.emailStatus === "failed" ? "badge-red" : "badge-yellow"}`}>
+              Email: {statusLabel}
+            </span>
+          </div>
+
+          <section>
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Booking Details</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Detail label="Booking Name" value={reservation.bookingName} />
+              <Detail label="Nationality" value={reservation.nationality} />
+              <Detail label="Recipients" value={(reservation.emailTo || []).join(", ")} />
+              <Detail label="Subject" value={reservation.subject} />
+            </div>
+          </section>
+
+          <section className="border-t border-slate-100 pt-4">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Guests and Room</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <Detail label="Adults" value={reservation.pax?.adults} />
+              <Detail label="Child with Bed" value={reservation.pax?.childWithBed} />
+              <Detail label="Child without Bed" value={reservation.pax?.childWithoutBed} />
+              <Detail label="Child below 5" value={reservation.pax?.childBelow5} />
+              <Detail label="Room Category" value={reservation.room?.category} />
+              <Detail label="No. of Rooms" value={reservation.room?.noOfRooms} />
+              <Detail label="Room Type" value={reservation.room?.type} />
+              <Detail label="Extra Bed" value={reservation.room?.extraBed} />
+              <Detail label="Meal Plan" value={reservation.room?.mealPlan} />
+            </div>
+          </section>
+
+          <section className="border-t border-slate-100 pt-4">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Visit Dates</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <Detail label="1st Check-In" value={reservation.visits?.visit1in} />
+              <Detail label="1st Check-Out" value={reservation.visits?.visit1out} />
+              <Detail label="2nd Check-In" value={reservation.visits?.visit2in} />
+              <Detail label="2nd Check-Out" value={reservation.visits?.visit2out} />
+            </div>
+          </section>
+
+          <section className="border-t border-slate-100 pt-4">
+            <Detail label="Notes" value={reservation.note} />
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ReservationsPage() {
   const qc = useQueryClient();
   const [search, setSearch]   = useState("");
   const [date, setDate]       = useState("");
   const [page, setPage]       = useState(1);
   const [modal, setModal]     = useState(false);
+  const [viewing, setViewing] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [sendingMail, setSendingMail] = useState(false);
   const [printData, setPrintData] = useState(null);
   const printRef = useRef();
 
@@ -204,6 +333,23 @@ export default function ReservationsPage() {
   const triggerPrint = (r) => {
     setPrintData(r);
     setTimeout(() => handlePrint(), 100);
+  };
+
+  const sendReservationMail = async () => {
+    if (!viewing?._id) return;
+    setSendingMail(true);
+    try {
+      const { data } = await reservationAPI.sendMail(viewing._id);
+      if (data?.data) setViewing(data.data);
+      toast.success("Reservation email sent");
+      refresh();
+    } catch (error) {
+      if (error?.response?.data?.data) setViewing(error.response.data.data);
+      notifyError(error);
+      refresh();
+    } finally {
+      setSendingMail(false);
+    }
   };
 
   return (
@@ -263,8 +409,8 @@ export default function ReservationsPage() {
                       <td className="text-xs text-slate-400">{formatDate(r.createdAt)}</td>
                       <td>
                         <div className="flex justify-end">
-                          <button onClick={() => triggerPrint(r)} className="btn-ghost text-xs py-1 px-2" title="Print">
-                            <i className="fa fa-print" />
+                          <button onClick={() => setViewing(r)} className="btn-secondary text-xs py-1 px-2">
+                            <i className="fa fa-eye" /> View
                           </button>
                         </div>
                       </td>
@@ -278,7 +424,33 @@ export default function ReservationsPage() {
         )}
       </div>
 
-      {modal && <ReservationModal onClose={() => setModal(false)} onSaved={() => { setModal(false); refresh(); }} />}
+      {modal && (
+        <ReservationModal
+          onClose={() => setModal(false)}
+          onSaved={() => { setModal(false); refresh(); }}
+        />
+      )}
+      {viewing && (
+        <ReservationViewModal
+          reservation={viewing}
+          sending={sendingMail}
+          onClose={() => setViewing(null)}
+          onEdit={() => { setEditing(viewing); setViewing(null); }}
+          onPrint={() => triggerPrint(viewing)}
+          onSendMail={sendReservationMail}
+        />
+      )}
+      {editing && (
+        <ReservationModal
+          reservation={editing}
+          onClose={() => { setViewing(editing); setEditing(null); }}
+          onSaved={(updated) => {
+            setEditing(null);
+            setViewing(updated);
+            refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
